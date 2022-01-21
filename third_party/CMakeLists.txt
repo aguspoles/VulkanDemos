@@ -70,3 +70,5 @@ if (VKB_WSI_SELECTION STREQUAL WAYLAND)
 endif()
 
 add_subdirectory(glfw)
+
+add_subdirectory(spdlog)

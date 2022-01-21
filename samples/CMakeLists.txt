@@ -10,11 +10,42 @@ set(ENGINE_FILES
     main.cpp
 )
 
+set(PLATFORM_FILES
+    # Header Files
+    platform/GlfwWindow.h
+    platform/Platform.h
+    platform/Window.h
+    platform/WindowsPlatform.h
+    platform/FileSystem.h
+    platform/Application.h
+    platform/InputEvents.h
+    # Source Files
+    platform/GlfwWindow.cpp
+    platform/Platform.cpp
+    platform/Window.cpp
+    platform/WindowsPlatform.cpp
+    platform/FileSystem.cpp
+    platform/Application.cpp
+    platform/InputEvents.cpp
+    )
+
+set(CORE_FILES
+    # Header Files
+    core/Timer.h
+    core/Logger.h
+    # Source Files
+    core/Timer.cpp
+    core/Logger.cpp
+)
+
 source_group("\\" FILES ${ENGINE_FILES})
-#source_group("core\\" FILES ${CORE_FILES})
+source_group("core\\" FILES ${CORE_FILES})
+source_group("platform\\" FILES ${PLATFORM_FILES})
 
 set(PROJECT_FILES
     ${ENGINE_FILES}
+    ${PLATFORM_FILES}
+    ${CORE_FILES}
     )
 
 # Add files based on platform
@@ -72,6 +103,7 @@ endif()
 target_link_libraries(${PROJECT_NAME} PUBLIC
     glm
     vulkan
+    spdlog
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE glfw)
