@@ -6,7 +6,6 @@ struct GLFWwindow;
 namespace prm
 {
     class Platform;
-    class VulkanInstance;
 
     /**
      * @brief An implementation of GLFW, inheriting the behaviour of the Window interface

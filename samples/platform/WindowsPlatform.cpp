@@ -44,25 +44,6 @@ namespace prm
 
             return str;
         }
-
-        std::vector<std::string> get_args()
-        {
-            LPWSTR* argv;
-            int     argc;
-
-            argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-
-            // Ignore the first argument containing the application full path
-            std::vector<std::wstring> arg_strings(argv + 1, argv + argc);
-            std::vector<std::string>  args;
-
-            for (auto& arg : arg_strings)
-            {
-                args.push_back(wstr_to_str(arg));
-            }
-
-            return args;
-        }
     }        // namespace
 
     namespace fs

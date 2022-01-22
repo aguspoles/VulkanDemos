@@ -56,7 +56,7 @@ namespace prm
 
         uint32_t m_LastFrameCount{ 0 };
 
-        Platform* m_Platform;
+        Platform* m_Platform{nullptr};
 
     private:
         std::string m_Name{};

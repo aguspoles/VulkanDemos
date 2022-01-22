@@ -6,8 +6,10 @@ include_directories(INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 
 set(ENGINE_FILES
     # Header Files
+    DemoApplication.h
     # Source Files
     main.cpp
+    DemoApplication.cpp
 )
 
 set(PLATFORM_FILES
