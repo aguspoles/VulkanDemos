@@ -15,7 +15,6 @@ namespace prm
     ExitCode Platform::Initialize(Application* app)
     {
         m_ActiveApp = std::unique_ptr<Application>(app);
-        m_WindowProperties.title = app->GetName();
 
         ICreateWindow(m_WindowProperties);
 

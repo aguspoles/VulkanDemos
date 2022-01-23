@@ -306,7 +306,7 @@ namespace prm
         glfwTerminate();
     }
 
-    vk::SurfaceKHR GlfwWindow::CreateSurface(vk::Instance instance, vk::PhysicalDevice)
+    vk::SurfaceKHR GlfwWindow::CreateSurface(vk::Instance instance)
     {
         if (!instance || !m_Handle)
         {
@@ -372,4 +372,8 @@ namespace prm
         return static_cast<float>(fb_width) / win_width;
     }
 
+    const char** GlfwWindow::GetInstanceExtensions(uint32_t& count) const
+    {
+        return glfwGetRequiredInstanceExtensions(&count);
+    }
 } 

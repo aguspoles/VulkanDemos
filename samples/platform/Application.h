@@ -2,7 +2,6 @@
 
 namespace prm
 {
-    class Window;
     class Platform;
     class InputEvent;
 

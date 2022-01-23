@@ -1,10 +1,10 @@
 #include "pch.h"
 
 #include "core/Logger.h"
+#include "DemoApplication.h"
 
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
 #include "platform/WindowsPlatform.h"
-#include "DemoApplication.h"
 
 int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     PSTR lpCmdLine, INT nCmdShow)

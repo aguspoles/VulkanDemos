@@ -54,7 +54,7 @@ namespace prm
 
         virtual ~Window() = default;
 
-        virtual vk::SurfaceKHR CreateSurface(vk::Instance instance, vk::PhysicalDevice physical_device) = 0;
+        virtual vk::SurfaceKHR CreateSurface(vk::Instance instance) = 0;
 
         virtual bool ShouldClose() = 0;
 
@@ -71,6 +71,8 @@ namespace prm
         const Extent& GetExtent() const;
 
         Mode GetWindowMode() const;
+
+        virtual const char** GetInstanceExtensions(uint32_t& count) const = 0;
 
     protected:
         Properties m_Properties;

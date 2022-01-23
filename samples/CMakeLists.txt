@@ -35,9 +35,20 @@ set(CORE_FILES
     # Header Files
     core/Timer.h
     core/Logger.h
+    core/Error.h
     # Source Files
     core/Timer.cpp
     core/Logger.cpp
+    core/Error.cpp
+)
+
+set(RENDER_FILES
+    # Header Files
+    render/VulkanRenderer.h
+    render/Utilities.h
+    # Source Files
+    render/VulkanRenderer.cpp
+    render/Utilities.cpp
 )
 
 source_group("\\" FILES ${ENGINE_FILES})
@@ -48,6 +59,7 @@ set(PROJECT_FILES
     ${ENGINE_FILES}
     ${PLATFORM_FILES}
     ${CORE_FILES}
+    ${RENDER_FILES}
     )
 
 # Add files based on platform

@@ -19,6 +19,8 @@ namespace prm
     {
         Application::Prepare(_platform);
 
+        m_Renderer.Init(_platform.GetWindow());
+
         return true;
     }
 

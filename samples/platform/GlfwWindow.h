@@ -17,7 +17,7 @@ namespace prm
 
         virtual ~GlfwWindow();
 
-        virtual vk::SurfaceKHR CreateSurface(vk::Instance instance, vk::PhysicalDevice physical_device) override;
+        virtual vk::SurfaceKHR CreateSurface(vk::Instance instance) override;
 
         virtual bool ShouldClose() override;
 
@@ -28,6 +28,8 @@ namespace prm
         float GetDpiFactor() const override;
 
         float GetContentScaleFactor() const override;
+
+        const char** GetInstanceExtensions(uint32_t& count) const override;
 
     private:
         GLFWwindow* m_Handle = nullptr;
