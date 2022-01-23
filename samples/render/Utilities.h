@@ -5,8 +5,9 @@ namespace prm
     struct QueueFamilyIndices
     {
         int32_t graphicsFamily = -1;
+        int32_t presentFamily = -1;
 
-        bool IsValid() const { return graphicsFamily != -1; }
+        bool IsValid() const { return graphicsFamily != -1 && presentFamily != -1; }
     };
 
     struct DebugInfo
@@ -24,6 +25,19 @@ namespace prm
          * @brief The debug report callback
          */
         vk::DebugReportCallbackEXT debug_report_callback;
+    };
+
+    struct SwapchainDetails
+    {
+        vk::SurfaceCapabilitiesKHR capabilities;  //surface properties
+        std::vector<vk::SurfaceFormatKHR> formats; //surface image formats
+        std::vector<vk::PresentModeKHR> presentModes; //How image should be presented on screen: FIFO, MAILBOX, etc
+    };
+
+    struct SwapchainImage
+    {
+        vk::Image image;
+        vk::ImageView view;
     };
 }
 
