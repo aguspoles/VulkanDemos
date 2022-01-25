@@ -1,22 +1,17 @@
 #include "pch.h"
 #include "VulkanRenderer.h"
+
+#include "CommandPool.h"
 #include "core/Logger.h"
+#include "render/GraphicsPipeline.h"
+#include "render/Swapchain.h"
+#include "render/CommandPool.h"
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
 namespace
 {
     const std::vector<const char*> k_DeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
-    const std::vector<vk::SurfaceFormatKHR> k_SurfaceFormatPriorityList = {
-        {vk::Format::eR8G8B8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear},
-        {vk::Format::eB8G8R8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear},
-        {vk::Format::eR8G8B8A8Unorm, vk::ColorSpaceKHR::eSrgbNonlinear},
-        {vk::Format::eB8G8R8A8Unorm, vk::ColorSpaceKHR::eSrgbNonlinear} };
-
-    std::string to_string(vk::SurfaceFormatKHR format)
-    {
-        return "myFormat"; //TODO 
-    }
 
 #if defined(VKB_DEBUG) || defined(VKB_VALIDATION_LAYERS)
 
@@ -106,14 +101,22 @@ namespace prm
         }
 #endif
 
-        for(auto image : m_SwapchainImages)
+        m_LogicalDevice.waitIdle(); //Wait for all resources to finish being used
+
+        m_CommandPool.reset();
+
+        m_GraphicsPipeline.reset();
+        if(m_PipeLayout)
         {
-            m_LogicalDevice.destroyImageView(image.view);
+            m_LogicalDevice.destroyPipelineLayout(m_PipeLayout);
         }
-        if(m_Swapchain)
+        if(m_RenderPass)
         {
-            m_LogicalDevice.destroySwapchainKHR(m_Swapchain);
+            m_LogicalDevice.destroyRenderPass(m_RenderPass);
         }
+
+        m_Swapchain.reset();
+
         if (m_Surface)
         {
             m_Instance.destroySurfaceKHR(m_Surface, nullptr);
@@ -155,9 +158,42 @@ namespace prm
 
         VULKAN_HPP_DEFAULT_DISPATCHER.init(m_LogicalDevice);
 
-        CreateSwapchain(window.GetExtent());
+        RecreateSwapchain(window.GetExtent());
     }
-     
+
+    void VulkanRenderer::Draw(Window::Extent windowExtent)
+    {
+        uint32_t index;
+
+        auto res = m_Swapchain->AcquireNextImage(index);
+
+        // Handle outdated error in acquire.
+        if (res == vk::Result::eSuboptimalKHR || res == vk::Result::eErrorOutOfDateKHR)
+        {
+            RecreateSwapchain(windowExtent);
+            res = m_Swapchain->AcquireNextImage(index);
+        }
+
+        if (res != vk::Result::eSuccess)
+        {
+            m_GraphicsQueue.waitIdle();
+            return;
+        }
+
+        Render(index);
+        res = PresentImage(index);
+
+        // Handle Outdated error in present.
+        if (res == vk::Result::eSuboptimalKHR || res == vk::Result::eErrorOutOfDateKHR)
+        {
+            RecreateSwapchain(windowExtent);
+        }
+        else if (res != vk::Result::eSuccess)
+        {
+            LOGE("Failed to present swapchain image.");
+        }
+    }
+
     void VulkanRenderer::CreateInstance(const std::vector<const char*>& requiredInstanceExtensions)
     {
         vk::ApplicationInfo appInfo{};
@@ -359,109 +395,144 @@ namespace prm
         return res;
     }
 
-    SwapchainDetails VulkanRenderer::GetSwapchainDetails(const vk::PhysicalDevice& gpu) const
+    vk::Result VulkanRenderer::PresentImage(uint32_t index)
     {
-        SwapchainDetails res;
-
-        VK_CHECK(m_GPU.getSurfaceCapabilitiesKHR(m_Surface, &res.capabilities));
-
-        uint32_t count = 0;
-        VK_CHECK(m_GPU.getSurfaceFormatsKHR(m_Surface, &count, nullptr));
-        res.formats.resize(count);
-        VK_CHECK(m_GPU.getSurfaceFormatsKHR(m_Surface, &count, res.formats.data()));
-
-        count = 0;
-        VK_CHECK(m_GPU.getSurfacePresentModesKHR(m_Surface, &count, nullptr));
-        res.presentModes.resize(count);
-        VK_CHECK(m_GPU.getSurfacePresentModesKHR(m_Surface, &count, res.presentModes.data()));
-
-        if(res.presentModes.empty() || res.formats.empty())
-        {
-            throw std::runtime_error("No formats or present modes are available for surface");
-        }
-
-        return res;
+        auto presentSemaphore = m_Swapchain->GetPresentSemaphore(index);
+        vk::PresentInfoKHR present;
+        vk::SwapchainKHR swapchain = m_Swapchain->GetHandle();
+        present.pWaitSemaphores = &presentSemaphore;
+        present.waitSemaphoreCount = 1;
+        present.swapchainCount = 1;
+        present.pSwapchains = &swapchain;
+        present.pImageIndices = &index;
+        return m_PresentationQueue.presentKHR(present);
     }
 
-    vk::SurfaceFormatKHR VulkanRenderer::ChooseFormat(const std::vector<vk::SurfaceFormatKHR>& formats)
+    void VulkanRenderer::CreateRenderPass()
     {
-        //Means all formats are defined
-        if(formats.size() == 1 && formats[0].format == vk::Format::eUndefined)
+        //Color attachment of the render pass
+        vk::AttachmentDescription colorAttachment;
+        colorAttachment.format = m_Swapchain->GetImageFormat();
+        colorAttachment.samples = vk::SampleCountFlagBits::e1;
+        colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;             //Describes what to to with attachment before 
+        colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;           //Describes what to to with attachment after rendering
+        colorAttachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;   //Describes what to to with stencil before 
+        colorAttachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare; //Describes what to to with stencil after rendering
+        //Framebuffer data will be stored as an image, and an image can have different layouts
+        //to give optimal use for certain operations.
+        colorAttachment.initialLayout = vk::ImageLayout::eUndefined;    //Image layout before render pass
+        colorAttachment.finalLayout = vk::ImageLayout::ePresentSrcKHR;  //Image layout after render pass
+
+        //Attachment reference uses an index that refers to the index in the attachment list passed in the render pass
+        vk::AttachmentReference colorAttachmentReference;
+        colorAttachmentReference.attachment = 0;
+        colorAttachmentReference.layout = vk::ImageLayout::eColorAttachmentOptimal; //Before subpass starts, the image is converted to this layout
+
+        vk::SubpassDescription subpass;
+        subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;  //Pipeline type subpass is to be bound to
+        subpass.colorAttachmentCount = 1;
+        subpass.pColorAttachments = &colorAttachmentReference;
+
+        //Need to determine when layout transitions of the subpasses occur using dependencies
+        std::array<vk::SubpassDependency, 2> dependencies;
+        //Conversion from ImageLayout::eUndefined to ImageLayout::eColorAttachmentOptimal
+        //src... means transitiosn must happen after...
+        //dst... means transitiosn must happen before...
+        dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;  //External sources outside of render pass
+        dependencies[0].dstSubpass = 0;
+        dependencies[0].srcStageMask = vk::PipelineStageFlagBits::eBottomOfPipe;
+        dependencies[0].dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+        dependencies[0].srcAccessMask = vk::AccessFlagBits::eMemoryRead;
+        dependencies[0].dstAccessMask = vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite;
+
+        dependencies[1].srcSubpass = 0;  //External sources outside of render pass
+        dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+        dependencies[1].srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+        dependencies[1].dstStageMask = vk::PipelineStageFlagBits::eBottomOfPipe;
+        dependencies[1].srcAccessMask = vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite;
+        dependencies[1].dstAccessMask = vk::AccessFlagBits::eMemoryRead;
+
+        vk::RenderPassCreateInfo info;
+        info.attachmentCount = 1;
+        info.pAttachments = &colorAttachment;
+        info.subpassCount = 1;
+        info.pSubpasses = &subpass;
+        info.dependencyCount = static_cast<uint32_t>(dependencies.size());
+        info.pDependencies = dependencies.data();
+
+        if(m_RenderPass)
         {
-            return k_SurfaceFormatPriorityList[0];
+            m_LogicalDevice.destroyRenderPass(m_RenderPass);
         }
-
-        for (auto& surface_format : k_SurfaceFormatPriorityList)
-        {
-            auto surface_format_it = std::find_if(
-                formats.begin(),
-                formats.end(),
-                [&surface_format](const vk::SurfaceFormatKHR& surface) {
-                    if (surface.format == surface_format.format &&
-                        surface.colorSpace == surface_format.colorSpace)
-                    {
-                        return true;
-                    }
-
-                    return false;
-                });
-            if (surface_format_it != formats.end())
-            {
-                LOGI("(Swapchain) Surface format ({}) selected.", ::to_string(*surface_format_it));
-                return *surface_format_it;
-            }
-        }
-
-        // If nothing found, default the first supporte surface format
-        auto surface_format_it = formats.begin();
-        LOGW("(Swapchain) Surface formats not supported. Selecting ({}).", ::to_string(*surface_format_it));
-
-        return *surface_format_it;
+        VK_CHECK(m_LogicalDevice.createRenderPass(&info, nullptr, &m_RenderPass));
     }
 
-    vk::PresentModeKHR VulkanRenderer::ChoosePresentMode(vk::PresentModeKHR request_present_mode, const std::vector<vk::PresentModeKHR>& available_present_modes)
+    void VulkanRenderer::RecordCommandBuffer(uint32_t index) const
     {
-        auto present_mode_it = std::find(available_present_modes.begin(), available_present_modes.end(), request_present_mode);
+        vk::CommandBufferBeginInfo info;
+        info.flags = vk::CommandBufferUsageFlagBits::eSimultaneousUse; //Means buffer can be resubmitted when it is already submitted and waiting for execution
 
-        if (present_mode_it == available_present_modes.end())
-        {
-            // If nothing found, always default to FIFO
-            const vk::PresentModeKHR chosen_present_mode = vk::PresentModeKHR::eFifo;
+        vk::RenderPassBeginInfo renderPassInfo;
+        renderPassInfo.renderPass = m_RenderPass;                     //Render pass to begin
+        renderPassInfo.renderArea.offset = vk::Offset2D{ 0, 0 };      //Start point of render pass in pixels
+        renderPassInfo.renderArea.extent = m_Swapchain->GetExtent();  //Size of region to run render pass
+        vk::ClearValue clearValue;
+        clearValue.color = { std::array<float, 4>{0.f, 0.1f, 0.9f, 1.0f} };  //TODO depth attachment clear value
+        renderPassInfo.clearValueCount = 1;
+        renderPassInfo.pClearValues = &clearValue;
 
-            LOGW("(Swapchain) Present mode '{}' not supported. Selecting '{}'.", vk::to_string(request_present_mode), vk::to_string(chosen_present_mode));
-            return chosen_present_mode;
-        }
-        else
-        {
-            LOGI("(Swapchain) Present mode selected: {}", vk::to_string(request_present_mode));
-            return *present_mode_it;
-        }
+        auto frame = m_Swapchain->GetFrameBuffer(index);
+        renderPassInfo.framebuffer = frame;
+
+        auto buffer = m_CommandPool->RequestCommandBuffer(index);
+
+        //Start recording command buffer
+        VK_CHECK(buffer.begin(&info));
+
+            buffer.beginRenderPass(&renderPassInfo, vk::SubpassContents::eInline);
+
+                SetViewportAndSissor(buffer);
+                buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, m_GraphicsPipeline->GetHandle());
+                buffer.draw(3, 1, 0, 0);
+
+            buffer.endRenderPass();
+
+        //End recording
+        buffer.end();
     }
 
-    vk::Extent2D VulkanRenderer::ChooseSwapchainExtent(vk::SurfaceCapabilitiesKHR capabilities, Window::Extent windowExtent)
+    void VulkanRenderer::SetViewportAndSissor(vk::CommandBuffer buffer) const
     {
-        const auto current_extent = capabilities.currentExtent;
-        const auto min_image_extent = capabilities.minImageExtent;
-        const auto max_image_extent = capabilities.maxImageExtent;
+        vk::Viewport viewport{};
+        viewport.width = static_cast<float>(m_Swapchain->GetExtent().width);
+        viewport.height = static_cast<float>(m_Swapchain->GetExtent().height);
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+        buffer.setViewport(0, { viewport });
 
-        if (current_extent.width == 0xFFFFFFFF)
-        {
-            return vk::Extent2D(windowExtent.width, windowExtent.height);
-        }
+        vk::Rect2D scissor{};
+        scissor.extent = m_Swapchain->GetExtent();
+        buffer.setScissor(0, { scissor });
+    }
 
-        if (windowExtent.width < 1 || windowExtent.height < 1)
-        {
-            LOGW("(Swapchain) Image extent ({}, {}) not supported. Selecting ({}, {}).", windowExtent.width, windowExtent.height, current_extent.width, current_extent.height);
-            return current_extent;
-        }
+    void VulkanRenderer::Render(uint32_t index)
+    {
+        RecordCommandBuffer(index);
 
-        windowExtent.width = std::max(windowExtent.width, min_image_extent.width);
-        windowExtent.width = std::min(windowExtent.width, max_image_extent.width);
+        auto renderSemaphore = m_Swapchain->GetRenderSemaphore(index);
+        auto presentSemaphore = m_Swapchain->GetPresentSemaphore(index);
 
-        windowExtent.height = std::max(windowExtent.height, min_image_extent.height);
-        windowExtent.height = std::min(windowExtent.height, max_image_extent.height);
+        vk::SubmitInfo submitInfo;
+        submitInfo.waitSemaphoreCount = 1;
+        submitInfo.pWaitSemaphores = &renderSemaphore;
+        const vk::PipelineStageFlags waitStage{ vk::PipelineStageFlagBits::eColorAttachmentOutput };
+        submitInfo.pWaitDstStageMask = &waitStage;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &m_CommandPool->RequestCommandBuffer(index);
+        submitInfo.signalSemaphoreCount = 1;
+        submitInfo.pSignalSemaphores = &presentSemaphore;
 
-        return vk::Extent2D(windowExtent.width, windowExtent.height);
+        VK_CHECK(m_GraphicsQueue.submit(1, &submitInfo, m_Swapchain->GetFence(index)));
     }
 
     void VulkanRenderer::CreateLogicalDevice(const std::vector<const char*>& requiredDeviceExtensions)
@@ -524,91 +595,53 @@ namespace prm
         }
     }
 
-    void VulkanRenderer::CreateSwapchain(Window::Extent windowExtent)
+    void VulkanRenderer::RecreateSwapchain(Window::Extent windowExtent)
     {
-        const SwapchainDetails swapchainDetails = GetSwapchainDetails(m_GPU);
+        m_LogicalDevice.waitIdle();//Wait for all resources to finish being used
 
-        const auto selectedFormat = ChooseFormat(swapchainDetails.formats);
-        const auto selectedPresentMode = ChoosePresentMode(vk::PresentModeKHR::eMailbox, swapchainDetails.presentModes);
-        const auto extent = ChooseSwapchainExtent(swapchainDetails.capabilities, windowExtent);
+        m_Swapchain.reset();
+        m_Swapchain = std::make_unique<Swapchain>(m_LogicalDevice, m_GPU, m_Surface,
+            m_QueueFamilyIndices, vk::Extent2D{ windowExtent.width,  windowExtent.height });
 
-        uint32_t imageCount = swapchainDetails.capabilities.minImageCount + 1;
-        if(swapchainDetails.capabilities.maxImageCount > 0 && 
-            swapchainDetails.capabilities.maxImageCount < imageCount)
+        const auto vertexShaderCode = read_shader_file("output/triangle_vert.spv");
+        const auto fragmentShaderCode = read_shader_file("output/triangle_frag.spv");
+        ShaderInfo vertInfo;
+        vertInfo.stage = vk::ShaderStageFlagBits::eVertex;
+        vertInfo.entryPoint = "main";
+        vertInfo.code = vertexShaderCode;
+        ShaderInfo fragInfo;
+        fragInfo.stage = vk::ShaderStageFlagBits::eFragment;
+        fragInfo.entryPoint = "main";
+        fragInfo.code = fragmentShaderCode;
+
+        const std::vector<ShaderInfo> shaderInfos = { vertInfo, fragInfo };
+
+        vk::PipelineLayoutCreateInfo layoutInfo;
+        layoutInfo.pSetLayouts = nullptr;
+        layoutInfo.setLayoutCount = 0;
+        layoutInfo.pushConstantRangeCount = 0;
+        layoutInfo.pPushConstantRanges = nullptr;
+        if(m_PipeLayout)
         {
-            imageCount = swapchainDetails.capabilities.maxImageCount;
+            m_LogicalDevice.destroyPipelineLayout(m_PipeLayout);
         }
+        VK_CHECK(m_LogicalDevice.createPipelineLayout(&layoutInfo, nullptr, &m_PipeLayout));
 
-        vk::SwapchainCreateInfoKHR info;
-        info.surface = m_Surface;
-        info.imageFormat = selectedFormat.format;
-        info.imageColorSpace = selectedFormat.colorSpace;
-        info.presentMode = selectedPresentMode;
-        info.imageExtent = extent;
-        info.minImageCount = imageCount;
-        info.imageArrayLayers = 1;
-        info.imageUsage = vk::ImageUsageFlagBits::eColorAttachment; //What attachments images will be used as
-        info.preTransform = swapchainDetails.capabilities.currentTransform; //Transform to perform on swapchain images
-        info.compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque; //Handle blending with external graphics e.g. other windows
-        info.clipped = VK_TRUE;
+        CreateRenderPass();
+        m_Swapchain->InitFrameBuffers(m_RenderPass);
 
-        //If graphics and presentation families are different, then swapchain must let images be shared between families
-        if(m_QueueFamilyIndices.graphicsFamily != m_QueueFamilyIndices.presentFamily)
-        {
-            const uint32_t familyIndices[] = { static_cast<uint32_t>(m_QueueFamilyIndices.graphicsFamily),
-                static_cast<uint32_t>(m_QueueFamilyIndices.presentFamily) };
-            info.imageSharingMode = vk::SharingMode::eConcurrent;
-            info.queueFamilyIndexCount = 2;
-            info.pQueueFamilyIndices = familyIndices;
-        }
-        else
-        {
-            info.imageSharingMode = vk::SharingMode::eExclusive;
-            info.queueFamilyIndexCount = 0;
-            info.pQueueFamilyIndices = nullptr;
-        }
+        ColorBlendState blendState;
+        ColorBlendAttachmentState blendAttState;
+        blendState.attachments.push_back(blendAttState);
 
-        VK_CHECK(m_LogicalDevice.createSwapchainKHR(&info, nullptr, &m_Swapchain));
+        PipelineState pipeState;
+        pipeState.SetPipelineLayout(m_PipeLayout);
+        pipeState.SetRenderPass(m_RenderPass);
+        pipeState.SetColorBlendState(blendState);
 
-        m_SwapchainImageFormat = selectedFormat.format;
-        m_SwapchainExtent = extent;
+        m_GraphicsPipeline = std::make_unique<GraphicsPipeline>(m_LogicalDevice, m_PipeCache, pipeState, shaderInfos);
 
-        //Create the images
-        uint32_t count;
-        VK_CHECK(m_LogicalDevice.getSwapchainImagesKHR(m_Swapchain, &count, nullptr));
-        std::vector<vk::Image> images(count);
-        VK_CHECK(m_LogicalDevice.getSwapchainImagesKHR(m_Swapchain, &count, images.data()));
-
-        for(const auto image : images)
-        {
-            SwapchainImage swapImage;
-            swapImage.image = image;
-            swapImage.view = CreateImageView(image, m_SwapchainImageFormat, vk::ImageAspectFlagBits::eColor);
-            m_SwapchainImages.push_back(swapImage);
-        }
-    }
-
-    vk::ImageView VulkanRenderer::CreateImageView(vk::Image image, vk::Format format, vk::ImageAspectFlagBits aspect)
-    {
-        vk::ImageViewCreateInfo info;
-        info.image = image;
-        info.format = format;
-        info.viewType = vk::ImageViewType::e2D;
-        info.components.r = vk::ComponentSwizzle::eIdentity;
-        info.components.g = vk::ComponentSwizzle::eIdentity;
-        info.components.b = vk::ComponentSwizzle::eIdentity;
-        info.components.a = vk::ComponentSwizzle::eIdentity;
-
-        //Subresources allow the view to only view a part of an image
-        info.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
-        info.subresourceRange.baseMipLevel = 0;
-        info.subresourceRange.levelCount = 1;
-        info.subresourceRange.baseArrayLayer = 0;
-        info.subresourceRange.layerCount = 1;
-
-        vk::ImageView view;
-        VK_CHECK(m_LogicalDevice.createImageView(&info, nullptr, &view));
-
-        return view;
+        m_CommandPool = std::make_unique<CommandPool>(m_LogicalDevice, m_QueueFamilyIndices);
+        m_CommandPool->CreateCommandBuffers(m_Swapchain->GetImagesCount());
     }
 }

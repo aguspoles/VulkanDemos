@@ -39,6 +39,13 @@ namespace prm
         vk::Image image;
         vk::ImageView view;
     };
+
+    struct ShaderInfo
+    {
+        vk::ShaderStageFlagBits stage{vk::ShaderStageFlagBits::eVertex};
+        std::string entryPoint;
+        std::vector<char> code;
+    };
 }
 
 

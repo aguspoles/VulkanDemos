@@ -25,6 +25,11 @@ namespace prm
 
         void window_size_callback(GLFWwindow* window, int width, int height)
         {
+            while(width == 0 || height == 0)
+            {
+                glfwWaitEvents();
+            }
+
             if (auto platform = reinterpret_cast<Platform*>(glfwGetWindowUserPointer(window)))
             {
                 platform->Resize(width, height);

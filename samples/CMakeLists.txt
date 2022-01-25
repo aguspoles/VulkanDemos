@@ -36,19 +36,29 @@ set(CORE_FILES
     core/Timer.h
     core/Logger.h
     core/Error.h
+    core/Helpers.h
     # Source Files
     core/Timer.cpp
     core/Logger.cpp
     core/Error.cpp
+    core/Helpers.cpp
 )
 
 set(RENDER_FILES
     # Header Files
     render/VulkanRenderer.h
     render/Utilities.h
+    render/GraphicsPipeline.h
+    render/PipelineState.h
+    render/Swapchain.h
+    render/CommandPool.h
     # Source Files
     render/VulkanRenderer.cpp
     render/Utilities.cpp
+    render/GraphicsPipeline.cpp
+    render/PipelineState.cpp
+    render/Swapchain.cpp
+    render/CommandPool.cpp
 )
 
 source_group("\\" FILES ${ENGINE_FILES})

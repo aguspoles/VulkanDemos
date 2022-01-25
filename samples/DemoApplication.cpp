@@ -27,6 +27,7 @@ namespace prm
     bool DemoApplication::Resize(const uint32_t width, const uint32_t height)
     {
         Application::Resize(width, height);
+        m_Renderer.RecreateSwapchain(Window::Extent{ width, height });
         return true;
     }
 
@@ -36,6 +37,7 @@ namespace prm
 
     void DemoApplication::Update(float delta_time)
     {
+        m_Renderer.Draw(m_Platform->GetWindow().GetExtent());
         Application::Update(delta_time);
     }
 
