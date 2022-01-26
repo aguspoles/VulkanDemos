@@ -7,6 +7,7 @@ namespace prm
     {
     public:
         Swapchain(RenderContext& renderContext, vk::Extent2D windowExtent);
+        Swapchain(RenderContext& renderContext, vk::Extent2D windowExtent, std::shared_ptr<Swapchain> oldSwapchain);
 
         Swapchain(const Swapchain&) = delete;
 
@@ -20,8 +21,6 @@ namespace prm
 
         vk::SwapchainKHR GetHandle() const { return m_Handle; }
 
-        void InitFrameBuffers(vk::RenderPass renderPass);
-
         vk::Result AcquireNextImage(uint32_t& image);
 
         vk::Result SubmitCommandBuffers(const vk::CommandBuffer* buffers, uint32_t imageIndex);
@@ -34,7 +33,11 @@ namespace prm
 
         vk::Extent2D GetExtent() const { return m_SwapchainExtent; }
 
+        vk::RenderPass GetRenderPass() const { return m_RenderPass; }
+
     private:
+        void Init(vk::Extent2D windowExtent);
+
         SwapchainDetails GetSwapchainDetails(const vk::PhysicalDevice& gpu) const;
         vk::SurfaceFormatKHR ChooseFormat(const std::vector<vk::SurfaceFormatKHR>& formats);
         vk::PresentModeKHR ChoosePresentMode(vk::PresentModeKHR request_present_mode, const std::vector<vk::PresentModeKHR>& available_present_modes);
@@ -42,22 +45,25 @@ namespace prm
 
         vk::ImageView CreateImageView(vk::Image image, vk::Format format, vk::ImageAspectFlagBits aspect);
         void CreateFrameBuffers();
+        void CreateRenderPass();
         void CreateSyncObjects();
 
         RenderContext& m_RenderContext;
         vk::SwapchainKHR m_Handle;
+        std::shared_ptr<Swapchain> m_OldSwapchain;
 
         vk::Format m_SwapchainImageFormat;
         vk::Extent2D m_SwapchainExtent;
         std::vector<SwapchainImage> m_SwapchainImages;
         std::vector<vk::Framebuffer> m_FrameBuffers;
+        vk::RenderPass m_RenderPass;
 
-        std::vector<vk::Semaphore> imageAvailableSemaphores;
-        std::vector<vk::Semaphore> renderFinishedSemaphores;
+        std::vector<vk::Semaphore> m_ImageAvailableSemaphores;
+        std::vector<vk::Semaphore> m_RenderFinishedSemaphores;
 
-        std::vector<vk::Fence> inFlightFences;
-        std::vector<vk::Fence> imagesInFlight;
-        uint32_t currentFrame = 0;
+        std::vector<vk::Fence> m_InFlightFences;
+        std::vector<vk::Fence> m_ImagesInFlightFences;
+        uint32_t m_CurrentFrame = 0;
     };
 }
 

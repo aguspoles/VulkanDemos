@@ -24,6 +24,45 @@ namespace prm
     Swapchain::Swapchain(RenderContext& renderContext, vk::Extent2D windowExtent)
         : m_RenderContext(renderContext)
     {
+        Init(windowExtent);
+    }
+
+    Swapchain::Swapchain(RenderContext& renderContext, vk::Extent2D windowExtent, std::shared_ptr<Swapchain> oldSwapchain)
+        : m_RenderContext(renderContext)
+        , m_OldSwapchain(oldSwapchain)
+    {
+        Init(windowExtent);
+        oldSwapchain = nullptr;
+    }
+
+    Swapchain::~Swapchain()
+    {
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+        {
+            m_RenderContext.r_Device.destroySemaphore(m_ImageAvailableSemaphores[i]);
+            m_RenderContext.r_Device.destroySemaphore(m_RenderFinishedSemaphores[i]);
+            m_RenderContext.r_Device.destroyFence(m_InFlightFences[i]);
+        }
+
+        for (const auto& buffer : m_FrameBuffers)
+        {
+            m_RenderContext.r_Device.destroyFramebuffer(buffer);
+        }
+
+        m_RenderContext.r_Device.destroyRenderPass(m_RenderPass);
+
+        for (const auto& image : m_SwapchainImages)
+        {
+            m_RenderContext.r_Device.destroyImageView(image.view);
+        }
+        if (m_Handle)
+        {
+            m_RenderContext.r_Device.destroySwapchainKHR(m_Handle);
+        }
+    }
+
+    void Swapchain::Init(vk::Extent2D windowExtent)
+    {
         const SwapchainDetails swapchainDetails = GetSwapchainDetails(m_RenderContext.r_GPU);
 
         const auto selectedFormat = ChooseFormat(swapchainDetails.formats);
@@ -49,6 +88,7 @@ namespace prm
         info.preTransform = swapchainDetails.capabilities.currentTransform; //Transform to perform on swapchain images
         info.compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque; //Handle blending with external graphics e.g. other windows
         info.clipped = VK_TRUE;
+        info.oldSwapchain = m_OldSwapchain == nullptr ? nullptr : m_OldSwapchain->GetHandle();
 
         //If graphics and presentation families are different, then swapchain must let images be shared between families
         if (m_RenderContext.r_QueueFamilyIndices.graphicsFamily != m_RenderContext.r_QueueFamilyIndices.presentFamily)
@@ -85,54 +125,33 @@ namespace prm
             m_SwapchainImages.push_back(swapImage);
         }
 
+        CreateRenderPass();
+        CreateFrameBuffers();
         CreateSyncObjects();
-    }
-
-    Swapchain::~Swapchain()
-    {
-        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
-        {
-            m_RenderContext.r_Device.destroySemaphore(imageAvailableSemaphores[i]);
-            m_RenderContext.r_Device.destroySemaphore(renderFinishedSemaphores[i]);
-            m_RenderContext.r_Device.destroyFence(inFlightFences[i]);
-        }
-
-        for (const auto& buffer : m_FrameBuffers)
-        {
-            m_RenderContext.r_Device.destroyFramebuffer(buffer);
-        }
-        for (const auto& image : m_SwapchainImages)
-        {
-            m_RenderContext.r_Device.destroyImageView(image.view);
-        }
-        if (m_Handle)
-        {
-            m_RenderContext.r_Device.destroySwapchainKHR(m_Handle);
-        }
     }
 
     vk::Result Swapchain::AcquireNextImage(uint32_t& image)
     {
-        VK_CHECK(m_RenderContext.r_Device.waitForFences(1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX));
+        VK_CHECK(m_RenderContext.r_Device.waitForFences(1, &m_InFlightFences[m_CurrentFrame], VK_TRUE, UINT64_MAX));
 
         vk::Result res;
         std::tie(res, image) = m_RenderContext.r_Device.acquireNextImageKHR(m_Handle, 
-            UINT64_MAX, imageAvailableSemaphores[currentFrame]);
+            UINT64_MAX, m_ImageAvailableSemaphores[m_CurrentFrame]);
 
         return res;
     }
 
     vk::Result Swapchain::SubmitCommandBuffers(const vk::CommandBuffer* buffers, uint32_t imageIndex)
     {
-        if (imagesInFlight[imageIndex])
+        if (m_ImagesInFlightFences[imageIndex])
         {
-            VK_CHECK(m_RenderContext.r_Device.waitForFences(1, &imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX));
+            VK_CHECK(m_RenderContext.r_Device.waitForFences(1, &m_ImagesInFlightFences[imageIndex], VK_TRUE, UINT64_MAX));
         }
-        imagesInFlight[imageIndex] = inFlightFences[currentFrame];
+        m_ImagesInFlightFences[imageIndex] = m_InFlightFences[m_CurrentFrame];
 
         vk::SubmitInfo submitInfo;
 
-        vk::Semaphore waitSemaphores[] = { imageAvailableSemaphores[currentFrame] };
+        vk::Semaphore waitSemaphores[] = { m_ImageAvailableSemaphores[m_CurrentFrame] };
         vk::PipelineStageFlags waitStages[] = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
         submitInfo.waitSemaphoreCount = 1;
         submitInfo.pWaitSemaphores = waitSemaphores;
@@ -141,12 +160,12 @@ namespace prm
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = buffers;
 
-        vk::Semaphore signalSemaphores[] = { renderFinishedSemaphores[currentFrame] };
+        vk::Semaphore signalSemaphores[] = { m_RenderFinishedSemaphores[m_CurrentFrame] };
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
 
-        VK_CHECK(m_RenderContext.r_Device.resetFences(1, &inFlightFences[currentFrame]));
-        VK_CHECK(m_RenderContext.r_GraphicsQueue.submit(1, &submitInfo, inFlightFences[currentFrame]));
+        VK_CHECK(m_RenderContext.r_Device.resetFences(1, &m_InFlightFences[m_CurrentFrame]));
+        VK_CHECK(m_RenderContext.r_GraphicsQueue.submit(1, &submitInfo, m_InFlightFences[m_CurrentFrame]));
 
         vk::PresentInfoKHR presentInfo;
         presentInfo.waitSemaphoreCount = 1;
@@ -160,12 +179,69 @@ namespace prm
 
         auto result = m_RenderContext.r_PresentQueue.presentKHR(&presentInfo);
 
-        currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+        m_CurrentFrame = (m_CurrentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 
         return result;
     }
 
-    void Swapchain::InitFrameBuffers(vk::RenderPass renderPass)
+    void Swapchain::CreateRenderPass() {
+        /*VkAttachmentDescription depthAttachment{};
+        depthAttachment.format = findDepthFormat();
+        depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;*/
+
+       /* VkAttachmentReference depthAttachmentRef{};
+        depthAttachmentRef.attachment = 1;
+        depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;*/
+
+        vk::AttachmentDescription colorAttachment;
+        colorAttachment.format = m_SwapchainImageFormat;
+        colorAttachment.samples = vk::SampleCountFlagBits::e1;
+        colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+        colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;
+        colorAttachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
+        colorAttachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
+        colorAttachment.initialLayout = vk::ImageLayout::eUndefined;
+        colorAttachment.finalLayout = vk::ImageLayout::ePresentSrcKHR;
+
+        vk::AttachmentReference colorAttachmentRef;
+        colorAttachmentRef.attachment = 0;
+        colorAttachmentRef.layout = vk::ImageLayout::eColorAttachmentOptimal;
+
+        vk::SubpassDescription subpass = {};
+        subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
+        subpass.colorAttachmentCount = 1;
+        subpass.pColorAttachments = &colorAttachmentRef;
+        //subpass.pDepthStencilAttachment = &depthAttachmentRef;
+
+        vk::SubpassDependency dependency;
+        dependency.dstSubpass = 0;
+        dependency.dstAccessMask = vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite;
+        dependency.dstStageMask =
+            vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests;
+        dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+        dependency.srcAccessMask = vk::AccessFlagBits::eMemoryRead;
+        dependency.srcStageMask =
+            vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests;
+
+        std::array<vk::AttachmentDescription, 1> attachments = { colorAttachment };
+        vk::RenderPassCreateInfo renderPassInfo;
+        renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+        renderPassInfo.pAttachments = attachments.data();
+        renderPassInfo.subpassCount = 1;
+        renderPassInfo.pSubpasses = &subpass;
+        renderPassInfo.dependencyCount = 1;
+        renderPassInfo.pDependencies = &dependency;
+
+        VK_CHECK(m_RenderContext.r_Device.createRenderPass(&renderPassInfo, nullptr, &m_RenderPass));
+    }
+
+    void Swapchain::CreateFrameBuffers()
     {
         m_FrameBuffers.resize(m_SwapchainImages.size());
 
@@ -176,7 +252,7 @@ namespace prm
             };
 
             vk::FramebufferCreateInfo info;
-            info.renderPass = renderPass;
+            info.renderPass = m_RenderPass;
             info.attachmentCount = static_cast<uint32_t>(attachments.size());
             info.pAttachments = attachments.data();  //One to one relations with the render pass attachments
             info.width = m_SwapchainExtent.width;
@@ -317,10 +393,10 @@ namespace prm
     }
 
     void Swapchain::CreateSyncObjects() {
-        imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-        renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-        inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
-        imagesInFlight.resize(GetImagesCount(), VK_NULL_HANDLE);
+        m_ImageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+        m_RenderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+        m_InFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
+        m_ImagesInFlightFences.resize(GetImagesCount(), VK_NULL_HANDLE);
 
         vk::SemaphoreCreateInfo semaphoreInfo;
 
@@ -329,9 +405,9 @@ namespace prm
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
         {
-            VK_CHECK(m_RenderContext.r_Device.createSemaphore(&semaphoreInfo, nullptr, &imageAvailableSemaphores[i]));
-            VK_CHECK(m_RenderContext.r_Device.createSemaphore(&semaphoreInfo, nullptr, &renderFinishedSemaphores[i]));
-            VK_CHECK(m_RenderContext.r_Device.createFence(&fenceInfo, nullptr, &inFlightFences[i]));
+            VK_CHECK(m_RenderContext.r_Device.createSemaphore(&semaphoreInfo, nullptr, &m_ImageAvailableSemaphores[i]));
+            VK_CHECK(m_RenderContext.r_Device.createSemaphore(&semaphoreInfo, nullptr, &m_RenderFinishedSemaphores[i]));
+            VK_CHECK(m_RenderContext.r_Device.createFence(&fenceInfo, nullptr, &m_InFlightFences[i]));
         }
     }
 

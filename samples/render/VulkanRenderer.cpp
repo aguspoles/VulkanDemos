@@ -111,10 +111,6 @@ namespace prm
         {
             m_RenderContext.r_Device.destroyPipelineLayout(m_PipeLayout);
         }
-        if (m_RenderPass)
-        {
-            m_RenderContext.r_Device.destroyRenderPass(m_RenderPass);
-        }
 
         m_Swapchain.reset();
 
@@ -160,7 +156,25 @@ namespace prm
 
         VULKAN_HPP_DEFAULT_DISPATCHER.init(m_RenderContext.r_Device);
 
-        RecreateSwapchain();
+        //TODO move outside renderer
+        const auto vertexShaderCode = read_shader_file("output/triangle_vert.spv");
+        const auto fragmentShaderCode = read_shader_file("output/triangle_frag.spv");
+        ShaderInfo vertInfo;
+        vertInfo.stage = vk::ShaderStageFlagBits::eVertex;
+        vertInfo.entryPoint = "main";
+        vertInfo.code = vertexShaderCode;
+        ShaderInfo fragInfo;
+        fragInfo.stage = vk::ShaderStageFlagBits::eFragment;
+        fragInfo.entryPoint = "main";
+        fragInfo.code = fragmentShaderCode;
+
+        m_ShaderInfos = { vertInfo, fragInfo };
+
+        CreateSwapchain();
+
+        CreatePipelineLayout();
+
+        m_GraphicsPipeline = std::make_unique<GraphicsPipeline>(m_RenderContext.r_Device, m_PipeCache, m_PipelineState, m_ShaderInfos);
 
         m_CommandPool = std::make_unique<CommandPool>(m_RenderContext.r_Device, m_RenderContext.r_QueueFamilyIndices);
         m_CommandPool->CreateCommandBuffers(m_Swapchain->GetImagesCount());
@@ -399,63 +413,33 @@ namespace prm
         return res;
     }
 
-    void VulkanRenderer::CreateRenderPass()
+    void VulkanRenderer::CreateSwapchain()
     {
-        //Color attachment of the render pass
-        vk::AttachmentDescription colorAttachment;
-        colorAttachment.format = m_Swapchain->GetImageFormat();
-        colorAttachment.samples = vk::SampleCountFlagBits::e1;
-        colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;             //Describes what to to with attachment before 
-        colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;           //Describes what to to with attachment after rendering
-        colorAttachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;   //Describes what to to with stencil before 
-        colorAttachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare; //Describes what to to with stencil after rendering
-        //Framebuffer data will be stored as an image, and an image can have different layouts
-        //to give optimal use for certain operations.
-        colorAttachment.initialLayout = vk::ImageLayout::eUndefined;    //Image layout before render pass
-        colorAttachment.finalLayout = vk::ImageLayout::ePresentSrcKHR;  //Image layout after render pass
+        vk::SurfaceCapabilitiesKHR surface_properties = m_RenderContext.r_GPU.getSurfaceCapabilitiesKHR(m_RenderContext.r_Surface);
+        const auto windowExtent = surface_properties.currentExtent;
+        m_Swapchain = std::make_unique<Swapchain>(m_RenderContext, windowExtent, std::move(m_Swapchain));
+    }
 
-        //Attachment reference uses an index that refers to the index in the attachment list passed in the render pass
-        vk::AttachmentReference colorAttachmentReference;
-        colorAttachmentReference.attachment = 0;
-        colorAttachmentReference.layout = vk::ImageLayout::eColorAttachmentOptimal; //Before subpass starts, the image is converted to this layout
-
-        vk::SubpassDescription subpass;
-        subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;  //Pipeline type subpass is to be bound to
-        subpass.colorAttachmentCount = 1;
-        subpass.pColorAttachments = &colorAttachmentReference;
-
-        //Need to determine when layout transitions of the subpasses occur using dependencies
-        std::array<vk::SubpassDependency, 2> dependencies;
-        //Conversion from ImageLayout::eUndefined to ImageLayout::eColorAttachmentOptimal
-        //src... means transitiosn must happen after...
-        //dst... means transitiosn must happen before...
-        dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;  //External sources outside of render pass
-        dependencies[0].dstSubpass = 0;
-        dependencies[0].srcStageMask = vk::PipelineStageFlagBits::eBottomOfPipe;
-        dependencies[0].dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
-        dependencies[0].srcAccessMask = vk::AccessFlagBits::eMemoryRead;
-        dependencies[0].dstAccessMask = vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite;
-
-        dependencies[1].srcSubpass = 0;  //External sources outside of render pass
-        dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
-        dependencies[1].srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
-        dependencies[1].dstStageMask = vk::PipelineStageFlagBits::eBottomOfPipe;
-        dependencies[1].srcAccessMask = vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite;
-        dependencies[1].dstAccessMask = vk::AccessFlagBits::eMemoryRead;
-
-        vk::RenderPassCreateInfo info;
-        info.attachmentCount = 1;
-        info.pAttachments = &colorAttachment;
-        info.subpassCount = 1;
-        info.pSubpasses = &subpass;
-        info.dependencyCount = static_cast<uint32_t>(dependencies.size());
-        info.pDependencies = dependencies.data();
-
-        if (m_RenderPass)
+    void VulkanRenderer::CreatePipelineLayout()
+    {
+        vk::PipelineLayoutCreateInfo layoutInfo;
+        layoutInfo.pSetLayouts = nullptr;
+        layoutInfo.setLayoutCount = 0;
+        layoutInfo.pushConstantRangeCount = 0;
+        layoutInfo.pPushConstantRanges = nullptr;
+        if (m_PipeLayout)
         {
-            m_RenderContext.r_Device.destroyRenderPass(m_RenderPass);
+            m_RenderContext.r_Device.destroyPipelineLayout(m_PipeLayout);
         }
-        VK_CHECK(m_RenderContext.r_Device.createRenderPass(&info, nullptr, &m_RenderPass));
+        VK_CHECK(m_RenderContext.r_Device.createPipelineLayout(&layoutInfo, nullptr, &m_PipeLayout));
+
+        ColorBlendState blendState;
+        ColorBlendAttachmentState blendAttState;
+        blendState.attachments.push_back(blendAttState);
+
+        m_PipelineState.SetPipelineLayout(m_PipeLayout);
+        m_PipelineState.SetRenderPass(m_Swapchain->GetRenderPass());
+        m_PipelineState.SetColorBlendState(blendState);
     }
 
     void VulkanRenderer::RecordCommandBuffer(uint32_t index) const
@@ -464,7 +448,7 @@ namespace prm
         info.flags = vk::CommandBufferUsageFlagBits::eSimultaneousUse; //Means buffer can be resubmitted when it is already submitted and waiting for execution
 
         vk::RenderPassBeginInfo renderPassInfo;
-        renderPassInfo.renderPass = m_RenderPass;                     //Render pass to begin
+        renderPassInfo.renderPass = m_Swapchain->GetRenderPass();                     //Render pass to begin
         renderPassInfo.renderArea.offset = vk::Offset2D{ 0, 0 };      //Start point of render pass in pixels
         renderPassInfo.renderArea.extent = m_Swapchain->GetExtent();  //Size of region to run render pass
         vk::ClearValue clearValue;
@@ -588,48 +572,22 @@ namespace prm
 
         const auto windowExtent = surface_properties.currentExtent;
 
-        m_RenderContext.r_Device.waitIdle();//Wait for all resources to finish being used
+        m_RenderContext.r_Device.waitIdle(); //Wait for all resources to finish being used
 
-        m_Swapchain.reset();
-        m_Swapchain = std::make_unique<Swapchain>(m_RenderContext, windowExtent);
-
-        const auto vertexShaderCode = read_shader_file("output/triangle_vert.spv");
-        const auto fragmentShaderCode = read_shader_file("output/triangle_frag.spv");
-        ShaderInfo vertInfo;
-        vertInfo.stage = vk::ShaderStageFlagBits::eVertex;
-        vertInfo.entryPoint = "main";
-        vertInfo.code = vertexShaderCode;
-        ShaderInfo fragInfo;
-        fragInfo.stage = vk::ShaderStageFlagBits::eFragment;
-        fragInfo.entryPoint = "main";
-        fragInfo.code = fragmentShaderCode;
-
-        const std::vector<ShaderInfo> shaderInfos = { vertInfo, fragInfo };
-
-        vk::PipelineLayoutCreateInfo layoutInfo;
-        layoutInfo.pSetLayouts = nullptr;
-        layoutInfo.setLayoutCount = 0;
-        layoutInfo.pushConstantRangeCount = 0;
-        layoutInfo.pPushConstantRanges = nullptr;
-        if (m_PipeLayout)
+        if (!m_Swapchain)
         {
-            m_RenderContext.r_Device.destroyPipelineLayout(m_PipeLayout);
+            m_Swapchain = std::make_unique<Swapchain>(m_RenderContext, windowExtent);
         }
-        VK_CHECK(m_RenderContext.r_Device.createPipelineLayout(&layoutInfo, nullptr, &m_PipeLayout));
+        else
+        {
+            m_Swapchain = std::make_unique<Swapchain>(m_RenderContext, windowExtent, std::move(m_Swapchain));
+            if(m_Swapchain->GetImagesCount() != m_CommandPool->GetBufferCount())
+            {
+                m_CommandPool->FreeCommandBuffers();
+                m_CommandPool->CreateCommandBuffers(m_Swapchain->GetImagesCount());
+            }
+        }
 
-        CreateRenderPass();
-        m_Swapchain->InitFrameBuffers(m_RenderPass);
-
-        ColorBlendState blendState;
-        ColorBlendAttachmentState blendAttState;
-        blendState.attachments.push_back(blendAttState);
-
-        PipelineState pipeState;
-        pipeState.SetPipelineLayout(m_PipeLayout);
-        pipeState.SetRenderPass(m_RenderPass);
-        pipeState.SetColorBlendState(blendState);
-
-        m_GraphicsPipeline.reset();
-        m_GraphicsPipeline = std::make_unique<GraphicsPipeline>(m_RenderContext.r_Device, m_PipeCache, pipeState, shaderInfos);
+        m_GraphicsPipeline = std::make_unique<GraphicsPipeline>(m_RenderContext.r_Device, m_PipeCache, m_PipelineState, m_ShaderInfos);
     }
 }

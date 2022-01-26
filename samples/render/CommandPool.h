@@ -20,16 +20,19 @@ namespace prm
 
         void CreateCommandBuffers(uint32_t count);
 
-        void RecordCommnadBuffers(vk::RenderPass renderPass, vk::Extent2D extent);
-
         vk::CommandBuffer& RequestCommandBuffer(uint32_t index);
 
         vk::CommandPool GetGraphicsPool() const { return m_GraphicsPool; }
+
+        void FreeCommandBuffers();
+
+        uint32_t GetBufferCount() const { return m_BufferCount; }
 
     private:
         vk::CommandPool m_GraphicsPool;
         std::vector<vk::CommandBuffer> m_CommandBuffers;
         vk::Device m_Device;
+        uint32_t m_BufferCount = 0;
     };
 }
 

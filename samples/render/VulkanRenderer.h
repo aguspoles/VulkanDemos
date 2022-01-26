@@ -1,6 +1,7 @@
 #pragma once
 #include "platform/Platform.h"
 #include "render/Utilities.h"
+#include "render/PipelineState.h"
 #include "core/Error.h"
 
 namespace prm
@@ -32,8 +33,9 @@ namespace prm
         RenderContext m_RenderContext;
 
         vk::PipelineLayout m_PipeLayout;
-        vk::RenderPass m_RenderPass;
         vk::PipelineCache m_PipeCache;
+        PipelineState m_PipelineState;
+        std::vector<ShaderInfo> m_ShaderInfos;
         
         std::vector<const char*> m_EnabledInstanceExtensions;
         std::vector<const char*> m_EnabledDeviceExtensions;
@@ -56,7 +58,9 @@ namespace prm
 
         QueueFamilyIndices GetQueueFamilyIndices(const vk::PhysicalDevice& gpu) const;
 
-        void CreateRenderPass();
+        void CreateSwapchain();
+
+        void CreatePipelineLayout();
 
         void RecordCommandBuffer(uint32_t index) const;
 

@@ -21,6 +21,7 @@ namespace prm
 
     void CommandPool::CreateCommandBuffers(uint32_t count)
     {
+        m_BufferCount = count;
         m_CommandBuffers.resize(count);
 
         vk::CommandBufferAllocateInfo allocInfo;
@@ -31,13 +32,14 @@ namespace prm
         VK_CHECK(m_Device.allocateCommandBuffers(&allocInfo, m_CommandBuffers.data()));
     }
 
-    void CommandPool::RecordCommnadBuffers(vk::RenderPass renderPass, vk::Extent2D extent)
-    {
-        
-    }
-
     vk::CommandBuffer& CommandPool::RequestCommandBuffer(uint32_t index)
     {
         return m_CommandBuffers[index];
+    }
+
+    void CommandPool::FreeCommandBuffers()
+    {
+        m_Device.freeCommandBuffers(m_GraphicsPool, static_cast<uint32_t>(m_CommandBuffers.size()), m_CommandBuffers.data());
+        m_CommandBuffers.clear();
     }
 }
