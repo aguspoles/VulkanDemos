@@ -6,6 +6,7 @@
 #include "render/GraphicsPipeline.h"
 #include "render/Swapchain.h"
 #include "render/CommandPool.h"
+#include "render/Mesh.h"
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
@@ -180,7 +181,7 @@ namespace prm
         m_CommandPool->CreateCommandBuffers(m_Swapchain->GetImagesCount());
     }
 
-    void VulkanRenderer::Draw()
+    void VulkanRenderer::Draw(const Mesh& mesh)
     {
         uint32_t index;
 
@@ -199,7 +200,7 @@ namespace prm
             return;
         }
 
-        Render(index);
+        Render(index, mesh);
 
         // Handle Outdated error in present.
         if (res == vk::Result::eSuboptimalKHR || res == vk::Result::eErrorOutOfDateKHR)
@@ -437,12 +438,24 @@ namespace prm
         ColorBlendAttachmentState blendAttState;
         blendState.attachments.push_back(blendAttState);
 
+        VertexInputState vertexData;
+        vertexData.attributes.resize(1);
+        vertexData.attributes[0].binding = 0;
+        vertexData.attributes[0].location = 0;
+        vertexData.attributes[0].offset = offsetof(Vertex, position); //Where this attribute is defined in a single vertex
+        vertexData.attributes[0].format = vk::Format::eR32G32B32A32Sfloat;
+        vertexData.bindings.resize(1);
+        vertexData.bindings[0].binding = 0;
+        vertexData.bindings[0].stride = sizeof(Vertex);
+        vertexData.bindings[0].inputRate = vk::VertexInputRate::eVertex; //How to move between data after each vertex
+
         m_PipelineState.SetPipelineLayout(m_PipeLayout);
         m_PipelineState.SetRenderPass(m_Swapchain->GetRenderPass());
         m_PipelineState.SetColorBlendState(blendState);
+        m_PipelineState.SetVertexInputState(vertexData);
     }
 
-    void VulkanRenderer::RecordCommandBuffer(uint32_t index) const
+    void VulkanRenderer::RecordCommandBuffer(uint32_t index, const Mesh& mesh) const
     {
         vk::CommandBufferBeginInfo info;
         info.flags = vk::CommandBufferUsageFlagBits::eSimultaneousUse; //Means buffer can be resubmitted when it is already submitted and waiting for execution
@@ -467,8 +480,13 @@ namespace prm
         buffer.beginRenderPass(&renderPassInfo, vk::SubpassContents::eInline);
 
         SetViewportAndScissor(buffer);
+
         buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, m_GraphicsPipeline->GetHandle());
-        buffer.draw(3, 1, 0, 0);
+        vk::Buffer vertexBuffer[] = { mesh.GetVertexBuffer() };
+        vk::DeviceSize offset[] = { 0 };
+        buffer.bindVertexBuffers(0, 1, vertexBuffer, offset);
+
+        buffer.draw(mesh.GetVertexCount(), 1, 0, 0);
 
         buffer.endRenderPass();
 
@@ -490,9 +508,9 @@ namespace prm
         buffer.setScissor(0, { scissor });
     }
 
-    void VulkanRenderer::Render(uint32_t index)
+    void VulkanRenderer::Render(uint32_t index, const Mesh& mesh)
     {
-        RecordCommandBuffer(index);
+        RecordCommandBuffer(index, mesh);
 
         m_Swapchain->SubmitCommandBuffers(&m_CommandPool->RequestCommandBuffer(index), index);
     }

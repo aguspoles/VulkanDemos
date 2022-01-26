@@ -3,6 +3,7 @@
 
 #include "platform/Platform.h"
 #include "platform/InputEvents.h"
+#include "render/Mesh.h"
 
 namespace prm
 {
@@ -13,6 +14,8 @@ namespace prm
 
     DemoApplication::~DemoApplication()
     {
+        m_Renderer->GetRenderContext().r_Device.waitIdle();
+        m_Mesh.reset();
         m_Renderer.reset();
     }
 
@@ -22,6 +25,14 @@ namespace prm
 
         m_Renderer = std::make_unique<VulkanRenderer>(*m_Platform);
         m_Renderer->Init();
+
+        const auto& context = m_Renderer->GetRenderContext();
+        const std::vector<Vertex> vertices = {
+            {{0.f, -0.4f, 0.f}},
+            {{0.4f, 0.4f, 0.f} },
+            {{-0.4f, 0.4f, 0.f} }
+        };
+        m_Mesh = std::make_unique<Mesh>(context.r_GPU, context.r_Device, vertices);
 
         return true;
     }
@@ -48,7 +59,7 @@ namespace prm
             return;
         }
 
-        m_Renderer->Draw();
+        m_Renderer->Draw(*m_Mesh);
 
         Application::Update(delta_time);
     }

@@ -9,6 +9,7 @@ namespace prm
     class GraphicsPipeline;
     class Swapchain;
     class CommandPool;
+    class Mesh;
 
     class VulkanRenderer
     {
@@ -25,8 +26,10 @@ namespace prm
         VulkanRenderer& operator=(VulkanRenderer&&) = delete;
 
         void Init();
-        void Draw();
+        void Draw(const Mesh& mesh);
         void RecreateSwapchain();
+
+        const RenderContext& GetRenderContext() const { return m_RenderContext; }
 
     private:
         Platform& m_Platform;
@@ -62,11 +65,11 @@ namespace prm
 
         void CreatePipelineLayout();
 
-        void RecordCommandBuffer(uint32_t index) const;
+        void RecordCommandBuffer(uint32_t index, const Mesh& mesh) const;
 
         void SetViewportAndScissor(vk::CommandBuffer buffer) const;
 
-        void Render(uint32_t index);
+        void Render(uint32_t index, const Mesh& mesh);
     };
 }
 

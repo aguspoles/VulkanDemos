@@ -6,6 +6,7 @@ namespace prm
 {
     class Platform;
     class InputEvent;
+    class Mesh;
 
     class DemoApplication : public Application
     {
@@ -24,5 +25,6 @@ namespace prm
 
     private:
         std::unique_ptr<VulkanRenderer> m_Renderer;
+        std::unique_ptr<Mesh> m_Mesh;
     };
 }

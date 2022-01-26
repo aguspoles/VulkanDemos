@@ -52,6 +52,7 @@ set(RENDER_FILES
     render/PipelineState.h
     render/Swapchain.h
     render/CommandPool.h
+    render/Mesh.h
     # Source Files
     render/VulkanRenderer.cpp
     render/Utilities.cpp
@@ -59,11 +60,13 @@ set(RENDER_FILES
     render/PipelineState.cpp
     render/Swapchain.cpp
     render/CommandPool.cpp
+    render/Mesh.cpp
 )
 
 source_group("\\" FILES ${ENGINE_FILES})
 source_group("core\\" FILES ${CORE_FILES})
 source_group("platform\\" FILES ${PLATFORM_FILES})
+source_group("render\\" FILES ${RENDER_FILES})
 
 set(PROJECT_FILES
     ${ENGINE_FILES}

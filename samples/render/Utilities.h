@@ -1,4 +1,5 @@
 #pragma once
+#include "glm/glm.hpp"
 
 namespace prm
 {
@@ -58,6 +59,11 @@ namespace prm
         vk::ShaderStageFlagBits stage{vk::ShaderStageFlagBits::eVertex};
         std::string entryPoint;
         std::vector<char> code;
+    };
+
+    struct Vertex
+    {
+        glm::vec3 position;
     };
 }
 
