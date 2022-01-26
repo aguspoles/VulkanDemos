@@ -1,5 +1,5 @@
 #pragma once
-#include "platform/Window.h"
+#include "platform/Platform.h"
 #include "render/Utilities.h"
 #include "core/Error.h"
 
@@ -12,22 +12,24 @@ namespace prm
     class VulkanRenderer
     {
     public:
-        VulkanRenderer();
+        VulkanRenderer(Platform& platform);
         ~VulkanRenderer();
 
-        void Init(Window& window);
-        void Draw(Window::Extent windowExtent);
-        void RecreateSwapchain(Window::Extent windowExtent);
+        VulkanRenderer(const VulkanRenderer&) = delete;
+
+        VulkanRenderer(VulkanRenderer&&) = delete;
+
+        VulkanRenderer& operator=(const VulkanRenderer&) = delete;
+
+        VulkanRenderer& operator=(VulkanRenderer&&) = delete;
+
+        void Init();
+        void Draw();
+        void RecreateSwapchain();
 
     private:
-        vk::Instance m_Instance;
-        vk::PhysicalDevice m_GPU;
-        vk::SurfaceKHR m_Surface;
-        vk::Device m_LogicalDevice;
-
-        vk::Queue m_GraphicsQueue;
-        vk::Queue m_PresentationQueue;
-        QueueFamilyIndices m_QueueFamilyIndices;
+        Platform& m_Platform;
+        RenderContext m_RenderContext;
 
         vk::PipelineLayout m_PipeLayout;
         vk::RenderPass m_RenderPass;
@@ -43,6 +45,7 @@ namespace prm
 #if defined(VKB_DEBUG)
         DebugInfo m_DebugInfo;
 #endif
+
         void CreateInstance(const std::vector<const char*>& requiredInstanceExtensions);
         void CheckInstanceExtensionsSupport(const std::vector<const char*>& required_extensions);
 
@@ -53,13 +56,11 @@ namespace prm
 
         QueueFamilyIndices GetQueueFamilyIndices(const vk::PhysicalDevice& gpu) const;
 
-        vk::Result PresentImage(uint32_t index);
-
         void CreateRenderPass();
 
         void RecordCommandBuffer(uint32_t index) const;
 
-        void SetViewportAndSissor(vk::CommandBuffer buffer) const;
+        void SetViewportAndScissor(vk::CommandBuffer buffer) const;
 
         void Render(uint32_t index);
     };

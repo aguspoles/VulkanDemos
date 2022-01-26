@@ -3,6 +3,8 @@
 #include "core/Error.h"
 #include "core/Logger.h"
 
+#define MAX_FRAMES_IN_FLIGHT 2
+
 namespace 
 {
     const std::vector<vk::SurfaceFormatKHR> k_SurfaceFormatPriorityList = {
@@ -19,13 +21,10 @@ namespace
 
 namespace prm
 {
-    Swapchain::Swapchain(vk::Device device, vk::PhysicalDevice gpu, vk::SurfaceKHR surface, const QueueFamilyIndices& queueFamilyIndices, vk::Extent2D windowExtent)
-        : m_LogicalDevice(device),
-        m_GPU(gpu),
-        m_Surface(surface),
-        m_QueueFamilyIndices(queueFamilyIndices)
+    Swapchain::Swapchain(RenderContext& renderContext, vk::Extent2D windowExtent)
+        : m_RenderContext(renderContext)
     {
-        const SwapchainDetails swapchainDetails = GetSwapchainDetails(m_GPU);
+        const SwapchainDetails swapchainDetails = GetSwapchainDetails(m_RenderContext.r_GPU);
 
         const auto selectedFormat = ChooseFormat(swapchainDetails.formats);
         const auto selectedPresentMode = ChoosePresentMode(vk::PresentModeKHR::eMailbox, swapchainDetails.presentModes);
@@ -39,7 +38,7 @@ namespace prm
         }
 
         vk::SwapchainCreateInfoKHR info;
-        info.surface = m_Surface;
+        info.surface = m_RenderContext.r_Surface;
         info.imageFormat = selectedFormat.format;
         info.imageColorSpace = selectedFormat.colorSpace;
         info.presentMode = selectedPresentMode;
@@ -52,10 +51,10 @@ namespace prm
         info.clipped = VK_TRUE;
 
         //If graphics and presentation families are different, then swapchain must let images be shared between families
-        if (m_QueueFamilyIndices.graphicsFamily != m_QueueFamilyIndices.presentFamily)
+        if (m_RenderContext.r_QueueFamilyIndices.graphicsFamily != m_RenderContext.r_QueueFamilyIndices.presentFamily)
         {
-            const uint32_t familyIndices[] = { static_cast<uint32_t>(m_QueueFamilyIndices.graphicsFamily),
-                static_cast<uint32_t>(m_QueueFamilyIndices.presentFamily) };
+            const uint32_t familyIndices[] = { static_cast<uint32_t>(m_RenderContext.r_QueueFamilyIndices.graphicsFamily),
+                static_cast<uint32_t>(m_RenderContext.r_QueueFamilyIndices.presentFamily) };
             info.imageSharingMode = vk::SharingMode::eConcurrent;
             info.queueFamilyIndexCount = 2;
             info.pQueueFamilyIndices = familyIndices;
@@ -67,16 +66,16 @@ namespace prm
             info.pQueueFamilyIndices = nullptr;
         }
 
-        VK_CHECK(m_LogicalDevice.createSwapchainKHR(&info, nullptr, &m_Handle));
+        VK_CHECK(m_RenderContext.r_Device.createSwapchainKHR(&info, nullptr, &m_Handle));
 
         m_SwapchainImageFormat = selectedFormat.format;
         m_SwapchainExtent = extent;
 
         //Create the images
         uint32_t count;
-        VK_CHECK(m_LogicalDevice.getSwapchainImagesKHR(m_Handle, &count, nullptr));
+        VK_CHECK(m_RenderContext.r_Device.getSwapchainImagesKHR(m_Handle, &count, nullptr));
         std::vector<vk::Image> images(count);
-        VK_CHECK(m_LogicalDevice.getSwapchainImagesKHR(m_Handle, &count, images.data()));
+        VK_CHECK(m_RenderContext.r_Device.getSwapchainImagesKHR(m_Handle, &count, images.data()));
 
         for (const auto image : images)
         {
@@ -85,80 +84,85 @@ namespace prm
             swapImage.view = CreateImageView(image, m_SwapchainImageFormat, vk::ImageAspectFlagBits::eColor);
             m_SwapchainImages.push_back(swapImage);
         }
+
+        CreateSyncObjects();
     }
 
     Swapchain::~Swapchain()
     {
-        for (const auto& semaphore : m_RecycledSemaphores)
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
         {
-            m_LogicalDevice.destroySemaphore(semaphore.renderSemaphore);
-            m_LogicalDevice.destroySemaphore(semaphore.presentSemaphore);
-        }
-        for (const auto& fence : m_Fences)
-        {
-            m_LogicalDevice.destroyFence(fence);
+            m_RenderContext.r_Device.destroySemaphore(imageAvailableSemaphores[i]);
+            m_RenderContext.r_Device.destroySemaphore(renderFinishedSemaphores[i]);
+            m_RenderContext.r_Device.destroyFence(inFlightFences[i]);
         }
 
         for (const auto& buffer : m_FrameBuffers)
         {
-            m_LogicalDevice.destroyFramebuffer(buffer);
+            m_RenderContext.r_Device.destroyFramebuffer(buffer);
         }
         for (const auto& image : m_SwapchainImages)
         {
-            m_LogicalDevice.destroyImageView(image.view);
+            m_RenderContext.r_Device.destroyImageView(image.view);
         }
         if (m_Handle)
         {
-            m_LogicalDevice.destroySwapchainKHR(m_Handle);
+            m_RenderContext.r_Device.destroySwapchainKHR(m_Handle);
         }
     }
 
     vk::Result Swapchain::AcquireNextImage(uint32_t& image)
     {
-        Semaphores acquireSemaphore;
-        if (m_RecycledSemaphores.empty())
-        {
-            acquireSemaphore.renderSemaphore = m_LogicalDevice.createSemaphore({});
-            acquireSemaphore.presentSemaphore = m_LogicalDevice.createSemaphore({});
-        }
-        else
-        {
-            acquireSemaphore = m_RecycledSemaphores.back();
-            m_RecycledSemaphores.pop_back();
-        }
+        VK_CHECK(m_RenderContext.r_Device.waitForFences(1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX));
 
         vk::Result res;
-        std::tie(res, image) = m_LogicalDevice.acquireNextImageKHR(m_Handle, UINT64_MAX, acquireSemaphore.renderSemaphore);
+        std::tie(res, image) = m_RenderContext.r_Device.acquireNextImageKHR(m_Handle, 
+            UINT64_MAX, imageAvailableSemaphores[currentFrame]);
 
-        if (res != vk::Result::eSuccess)
+        return res;
+    }
+
+    vk::Result Swapchain::SubmitCommandBuffers(const vk::CommandBuffer* buffers, uint32_t imageIndex)
+    {
+        if (imagesInFlight[imageIndex])
         {
-            m_RecycledSemaphores.push_back(acquireSemaphore);
-            return res;
+            VK_CHECK(m_RenderContext.r_Device.waitForFences(1, &imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX));
         }
+        imagesInFlight[imageIndex] = inFlightFences[currentFrame];
 
-        // If we have outstanding fences for this swapchain image, wait for them to complete first.
-        // After begin frame returns, it is safe to reuse or delete resources which
-        // were used previously.
-        //
-        // We wait for fences which completes N frames earlier, so we do not stall,
-        // waiting for all GPU work to complete before this returns.
-        // Normally, this doesn't really block at all,
-        // since we're waiting for old frames to have been completed, but just in case.
-        if (m_Fences[image])
-        {
-            VK_CHECK(m_LogicalDevice.waitForFences(m_Fences[image], true, UINT64_MAX));
-            m_LogicalDevice.resetFences(m_Fences[image]);
-        }
+        vk::SubmitInfo submitInfo;
 
-        //Recycle the old semaphore back into the semaphore manager.
-        Semaphores oldSemaphore = m_SemaphoreByImageIndex[image];
-        m_SemaphoreByImageIndex[image] = acquireSemaphore;
-        if (oldSemaphore.renderSemaphore)
-        {
-            m_RecycledSemaphores.push_back(oldSemaphore);
-        }
+        vk::Semaphore waitSemaphores[] = { imageAvailableSemaphores[currentFrame] };
+        vk::PipelineStageFlags waitStages[] = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
+        submitInfo.waitSemaphoreCount = 1;
+        submitInfo.pWaitSemaphores = waitSemaphores;
+        submitInfo.pWaitDstStageMask = waitStages;
 
-        return vk::Result::eSuccess;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = buffers;
+
+        vk::Semaphore signalSemaphores[] = { renderFinishedSemaphores[currentFrame] };
+        submitInfo.signalSemaphoreCount = 1;
+        submitInfo.pSignalSemaphores = signalSemaphores;
+
+        VK_CHECK(m_RenderContext.r_Device.resetFences(1, &inFlightFences[currentFrame]));
+        VK_CHECK(m_RenderContext.r_GraphicsQueue.submit(1, &submitInfo, inFlightFences[currentFrame]));
+
+        vk::PresentInfoKHR presentInfo;
+        presentInfo.waitSemaphoreCount = 1;
+        presentInfo.pWaitSemaphores = signalSemaphores;
+
+        vk::SwapchainKHR swapChains[] = { m_Handle };
+        presentInfo.swapchainCount = 1;
+        presentInfo.pSwapchains = swapChains;
+
+        presentInfo.pImageIndices = &imageIndex;
+
+        auto result = m_RenderContext.r_PresentQueue.presentKHR(&presentInfo);
+
+        currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+
+        return result;
     }
 
     void Swapchain::InitFrameBuffers(vk::RenderPass renderPass)
@@ -179,48 +183,25 @@ namespace prm
             info.height = m_SwapchainExtent.height;
             info.layers = 1;
 
-            VK_CHECK(m_LogicalDevice.createFramebuffer(&info, nullptr, &m_FrameBuffers[i]));
-        }
-
-        m_SemaphoreByImageIndex.resize(m_SwapchainImages.size());
-        m_Fences.resize(m_SwapchainImages.size());
-
-        for(auto& fence : m_Fences)
-        {
-            fence = m_LogicalDevice.createFence({ vk::FenceCreateFlagBits::eSignaled });
+            VK_CHECK(m_RenderContext.r_Device.createFramebuffer(&info, nullptr, &m_FrameBuffers[i]));
         }
     }
 
-    vk::Semaphore Swapchain::GetRenderSemaphore(uint32_t imageIndex) const
-    {
-        return m_SemaphoreByImageIndex[imageIndex].renderSemaphore;
-    }
-
-    vk::Semaphore Swapchain::GetPresentSemaphore(uint32_t imageIndex) const
-    {
-        return m_SemaphoreByImageIndex[imageIndex].presentSemaphore;
-    }
-
-    vk::Fence Swapchain::GetFence(uint32_t imageIndex) const
-    {
-        return m_Fences[imageIndex];
-    }
-
-    SwapchainDetails Swapchain::GetSwapchainDetails(const vk::PhysicalDevice & gpu) const
+    SwapchainDetails Swapchain::GetSwapchainDetails(const vk::PhysicalDevice& gpu) const
     {
         SwapchainDetails res;
 
-        VK_CHECK(m_GPU.getSurfaceCapabilitiesKHR(m_Surface, &res.capabilities));
+        VK_CHECK(m_RenderContext.r_GPU.getSurfaceCapabilitiesKHR(m_RenderContext.r_Surface, &res.capabilities));
 
         uint32_t count = 0;
-        VK_CHECK(m_GPU.getSurfaceFormatsKHR(m_Surface, &count, nullptr));
+        VK_CHECK(m_RenderContext.r_GPU.getSurfaceFormatsKHR(m_RenderContext.r_Surface, &count, nullptr));
         res.formats.resize(count);
-        VK_CHECK(m_GPU.getSurfaceFormatsKHR(m_Surface, &count, res.formats.data()));
+        VK_CHECK(m_RenderContext.r_GPU.getSurfaceFormatsKHR(m_RenderContext.r_Surface, &count, res.formats.data()));
 
         count = 0;
-        VK_CHECK(m_GPU.getSurfacePresentModesKHR(m_Surface, &count, nullptr));
+        VK_CHECK(m_RenderContext.r_GPU.getSurfacePresentModesKHR(m_RenderContext.r_Surface, &count, nullptr));
         res.presentModes.resize(count);
-        VK_CHECK(m_GPU.getSurfacePresentModesKHR(m_Surface, &count, res.presentModes.data()));
+        VK_CHECK(m_RenderContext.r_GPU.getSurfacePresentModesKHR(m_RenderContext.r_Surface, &count, res.presentModes.data()));
 
         if (res.presentModes.empty() || res.formats.empty())
         {
@@ -230,7 +211,7 @@ namespace prm
         return res;
     }
 
-    vk::SurfaceFormatKHR Swapchain::ChooseFormat(const std::vector<vk::SurfaceFormatKHR>&formats)
+    vk::SurfaceFormatKHR Swapchain::ChooseFormat(const std::vector<vk::SurfaceFormatKHR>& formats)
     {
         //Means all formats are defined
         if (formats.size() == 1 && formats[0].format == vk::Format::eUndefined)
@@ -266,7 +247,7 @@ namespace prm
         return *surface_format_it;
     }
 
-    vk::PresentModeKHR Swapchain::ChoosePresentMode(vk::PresentModeKHR request_present_mode, const std::vector<vk::PresentModeKHR>&available_present_modes)
+    vk::PresentModeKHR Swapchain::ChoosePresentMode(vk::PresentModeKHR request_present_mode, const std::vector<vk::PresentModeKHR>& available_present_modes)
     {
         auto present_mode_it = std::find(available_present_modes.begin(), available_present_modes.end(), request_present_mode);
 
@@ -330,9 +311,28 @@ namespace prm
         info.subresourceRange.layerCount = 1;
 
         vk::ImageView view;
-        VK_CHECK(m_LogicalDevice.createImageView(&info, nullptr, &view));
+        VK_CHECK(m_RenderContext.r_Device.createImageView(&info, nullptr, &view));
 
         return view;
+    }
+
+    void Swapchain::CreateSyncObjects() {
+        imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+        renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+        inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
+        imagesInFlight.resize(GetImagesCount(), VK_NULL_HANDLE);
+
+        vk::SemaphoreCreateInfo semaphoreInfo;
+
+        vk::FenceCreateInfo fenceInfo;
+        fenceInfo.flags = vk::FenceCreateFlagBits::eSignaled;
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+        {
+            VK_CHECK(m_RenderContext.r_Device.createSemaphore(&semaphoreInfo, nullptr, &imageAvailableSemaphores[i]));
+            VK_CHECK(m_RenderContext.r_Device.createSemaphore(&semaphoreInfo, nullptr, &renderFinishedSemaphores[i]));
+            VK_CHECK(m_RenderContext.r_Device.createFence(&fenceInfo, nullptr, &inFlightFences[i]));
+        }
     }
 
 }

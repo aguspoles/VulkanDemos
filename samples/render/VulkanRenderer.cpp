@@ -83,7 +83,8 @@ namespace
 
 namespace prm
 {
-    VulkanRenderer::VulkanRenderer()
+    VulkanRenderer::VulkanRenderer(Platform& platform)
+        : m_Platform(platform)
     {
         
     }
@@ -93,46 +94,47 @@ namespace prm
 #if defined(VKB_DEBUG)
         if (m_DebugInfo.debug_utils_messenger)
         {
-            m_Instance.destroyDebugUtilsMessengerEXT(m_DebugInfo.debug_utils_messenger, nullptr);
+            m_RenderContext.r_Instance.destroyDebugUtilsMessengerEXT(m_DebugInfo.debug_utils_messenger, nullptr);
         }
         if (m_DebugInfo.debug_report_callback)
         {
-            m_Instance.destroyDebugReportCallbackEXT(m_DebugInfo.debug_report_callback, nullptr);
+            m_RenderContext.r_Instance.destroyDebugReportCallbackEXT(m_DebugInfo.debug_report_callback, nullptr);
         }
 #endif
 
-        m_LogicalDevice.waitIdle(); //Wait for all resources to finish being used
+        m_RenderContext.r_Device.waitIdle(); //Wait for all resources to finish being used
 
         m_CommandPool.reset();
 
         m_GraphicsPipeline.reset();
-        if(m_PipeLayout)
+        if (m_PipeLayout)
         {
-            m_LogicalDevice.destroyPipelineLayout(m_PipeLayout);
+            m_RenderContext.r_Device.destroyPipelineLayout(m_PipeLayout);
         }
-        if(m_RenderPass)
+        if (m_RenderPass)
         {
-            m_LogicalDevice.destroyRenderPass(m_RenderPass);
+            m_RenderContext.r_Device.destroyRenderPass(m_RenderPass);
         }
 
         m_Swapchain.reset();
 
-        if (m_Surface)
+        if (m_RenderContext.r_Surface)
         {
-            m_Instance.destroySurfaceKHR(m_Surface, nullptr);
+            m_RenderContext.r_Instance.destroySurfaceKHR(m_RenderContext.r_Surface, nullptr);
         }
-        if(m_LogicalDevice)
+        if (m_RenderContext.r_Device)
         {
-            m_LogicalDevice.destroy();
+            m_RenderContext.r_Device.destroy();
         }
-        if (m_Instance)
+        if (m_RenderContext.r_Instance)
         {
-            m_Instance.destroy();
+            m_RenderContext.r_Instance.destroy();
         }
     }
 
-    void VulkanRenderer::Init(Window& window)
+    void VulkanRenderer::Init()
     {
+        auto& window = m_Platform.GetWindow();
         static vk::DynamicLoader  dl;
         const auto vkGetInstanceProcAddr =
             dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
@@ -149,19 +151,22 @@ namespace prm
         }
         CreateInstance(requiredInstanceExtensions);
 
-        m_Surface = window.CreateSurface(m_Instance);
+        m_RenderContext.r_Surface = window.CreateSurface(m_RenderContext.r_Instance);
 
         FindPhysicalDevice();
-        LOGI("Selected GPU: {}", m_GPU.getProperties().deviceName);
+        LOGI("Selected GPU: {}", m_RenderContext.r_GPU.getProperties().deviceName);
 
         CreateLogicalDevice(k_DeviceExtensions);
 
-        VULKAN_HPP_DEFAULT_DISPATCHER.init(m_LogicalDevice);
+        VULKAN_HPP_DEFAULT_DISPATCHER.init(m_RenderContext.r_Device);
 
-        RecreateSwapchain(window.GetExtent());
+        RecreateSwapchain();
+
+        m_CommandPool = std::make_unique<CommandPool>(m_RenderContext.r_Device, m_RenderContext.r_QueueFamilyIndices);
+        m_CommandPool->CreateCommandBuffers(m_Swapchain->GetImagesCount());
     }
 
-    void VulkanRenderer::Draw(Window::Extent windowExtent)
+    void VulkanRenderer::Draw()
     {
         uint32_t index;
 
@@ -170,23 +175,22 @@ namespace prm
         // Handle outdated error in acquire.
         if (res == vk::Result::eSuboptimalKHR || res == vk::Result::eErrorOutOfDateKHR)
         {
-            RecreateSwapchain(windowExtent);
+            RecreateSwapchain();
             res = m_Swapchain->AcquireNextImage(index);
         }
 
         if (res != vk::Result::eSuccess)
         {
-            m_GraphicsQueue.waitIdle();
+            m_RenderContext.r_GraphicsQueue.waitIdle();
             return;
         }
 
         Render(index);
-        res = PresentImage(index);
 
         // Handle Outdated error in present.
         if (res == vk::Result::eSuboptimalKHR || res == vk::Result::eErrorOutOfDateKHR)
         {
-            RecreateSwapchain(windowExtent);
+            RecreateSwapchain();
         }
         else if (res != vk::Result::eSuccess)
         {
@@ -216,7 +220,7 @@ namespace prm
         std::vector<vk::LayerProperties> supported_validation_layers(instance_layer_count);
         VK_CHECK(vk::enumerateInstanceLayerProperties(&instance_layer_count, supported_validation_layers.data()));
 
-        const std::vector<const char*> requested_validation_layers({"VK_LAYER_KHRONOS_validation"});
+        const std::vector<const char*> requested_validation_layers({ "VK_LAYER_KHRONOS_validation" });
 
         if (validate_layers(requested_validation_layers, supported_validation_layers))
         {
@@ -233,7 +237,7 @@ namespace prm
 
         info.enabledLayerCount = static_cast<uint32_t>(requested_validation_layers.size());
         info.ppEnabledLayerNames = requested_validation_layers.data();
-        if(m_DebugInfo.debug_utils)
+        if (m_DebugInfo.debug_utils)
         {
             info.pNext = &m_DebugInfo.debug_utils_create_info;
         }
@@ -243,14 +247,14 @@ namespace prm
         }
 #endif
 
-        VK_CHECK(vk::createInstance(&info, nullptr, &m_Instance));
-        VULKAN_HPP_DEFAULT_DISPATCHER.init(m_Instance);
+        VK_CHECK(vk::createInstance(&info, nullptr, &m_RenderContext.r_Instance));
+        VULKAN_HPP_DEFAULT_DISPATCHER.init(m_RenderContext.r_Instance);
 
 #if defined(VKB_DEBUG)
         vk::Result result;
         if (m_DebugInfo.debug_utils)
         {
-            result = m_Instance.createDebugUtilsMessengerEXT(&m_DebugInfo.debug_utils_create_info, nullptr, &m_DebugInfo.debug_utils_messenger);
+            result = m_RenderContext.r_Instance.createDebugUtilsMessengerEXT(&m_DebugInfo.debug_utils_create_info, nullptr, &m_DebugInfo.debug_utils_messenger);
             if (result != vk::Result::eSuccess)
             {
                 throw VulkanException(result, "Could not create debug utils messenger");
@@ -258,7 +262,7 @@ namespace prm
         }
         else
         {
-            result = m_Instance.createDebugReportCallbackEXT(&m_DebugInfo.debug_report_create_info, nullptr, &m_DebugInfo.debug_report_callback);
+            result = m_RenderContext.r_Instance.createDebugReportCallbackEXT(&m_DebugInfo.debug_report_create_info, nullptr, &m_DebugInfo.debug_report_callback);
             if (result != vk::Result::eSuccess)
             {
                 throw VulkanException(result, "Could not create debug report callback");
@@ -282,8 +286,8 @@ namespace prm
             if (std::find_if(available_instance_extensions.begin(), available_instance_extensions.end(),
                 [&extension_name](vk::ExtensionProperties available_extension) { return strcmp(available_extension.extensionName, extension_name) == 0; }) == available_instance_extensions.end())
             {
-                    LOGE("Required instance extension {} not available, cannot run", extension_name);
-                    extension_error = true;
+                LOGE("Required instance extension {} not available, cannot run", extension_name);
+                extension_error = true;
             }
             m_EnabledInstanceExtensions.push_back(extension);
         }
@@ -327,7 +331,7 @@ namespace prm
     {
         // Querying valid physical devices on the machine
         uint32_t physical_device_count{ 0 };
-        VK_CHECK(m_Instance.enumeratePhysicalDevices(&physical_device_count, nullptr));
+        VK_CHECK(m_RenderContext.r_Instance.enumeratePhysicalDevices(&physical_device_count, nullptr));
 
         if (physical_device_count < 1)
         {
@@ -336,7 +340,7 @@ namespace prm
 
         std::vector<vk::PhysicalDevice> physical_devices;
         physical_devices.resize(physical_device_count);
-        VK_CHECK(m_Instance.enumeratePhysicalDevices(&physical_device_count, physical_devices.data()));
+        VK_CHECK(m_RenderContext.r_Instance.enumeratePhysicalDevices(&physical_device_count, physical_devices.data()));
 
         // Find a discrete GPU
         for (const auto& gpu : physical_devices)
@@ -344,17 +348,17 @@ namespace prm
             if (gpu.getProperties().deviceType == vk::PhysicalDeviceType::eDiscreteGpu)
             {
                 auto familyIndices = GetQueueFamilyIndices(gpu);
-                if(familyIndices.IsValid())
+                if (familyIndices.IsValid())
                 {
-                    m_GPU = gpu;
-                    m_QueueFamilyIndices = familyIndices;
+                    m_RenderContext.r_GPU = gpu;
+                    m_RenderContext.r_QueueFamilyIndices = familyIndices;
                     return;
                 }
             }
         }
 
         LOGW("Couldn't find a discrete physical device, picking default GPU");
-        m_GPU = physical_devices.at(0);
+        m_RenderContext.r_GPU = physical_devices.at(0);
     }
 
     QueueFamilyIndices VulkanRenderer::GetQueueFamilyIndices(const vk::PhysicalDevice& gpu) const
@@ -373,9 +377,9 @@ namespace prm
 
             vk::Bool32 present_supported{ VK_FALSE };
 
-            if (m_Surface)
+            if (m_RenderContext.r_Surface)
             {
-                const vk::Result result = gpu.getSurfaceSupportKHR(i, m_Surface, &present_supported);
+                const vk::Result result = gpu.getSurfaceSupportKHR(i, m_RenderContext.r_Surface, &present_supported);
                 VK_CHECK(result);
             }
 
@@ -384,7 +388,7 @@ namespace prm
                 res.presentFamily = i;
             }
 
-            if(res.IsValid())
+            if (res.IsValid())
             {
                 break;
             }
@@ -393,19 +397,6 @@ namespace prm
         }
 
         return res;
-    }
-
-    vk::Result VulkanRenderer::PresentImage(uint32_t index)
-    {
-        auto presentSemaphore = m_Swapchain->GetPresentSemaphore(index);
-        vk::PresentInfoKHR present;
-        vk::SwapchainKHR swapchain = m_Swapchain->GetHandle();
-        present.pWaitSemaphores = &presentSemaphore;
-        present.waitSemaphoreCount = 1;
-        present.swapchainCount = 1;
-        present.pSwapchains = &swapchain;
-        present.pImageIndices = &index;
-        return m_PresentationQueue.presentKHR(present);
     }
 
     void VulkanRenderer::CreateRenderPass()
@@ -460,11 +451,11 @@ namespace prm
         info.dependencyCount = static_cast<uint32_t>(dependencies.size());
         info.pDependencies = dependencies.data();
 
-        if(m_RenderPass)
+        if (m_RenderPass)
         {
-            m_LogicalDevice.destroyRenderPass(m_RenderPass);
+            m_RenderContext.r_Device.destroyRenderPass(m_RenderPass);
         }
-        VK_CHECK(m_LogicalDevice.createRenderPass(&info, nullptr, &m_RenderPass));
+        VK_CHECK(m_RenderContext.r_Device.createRenderPass(&info, nullptr, &m_RenderPass));
     }
 
     void VulkanRenderer::RecordCommandBuffer(uint32_t index) const
@@ -477,31 +468,31 @@ namespace prm
         renderPassInfo.renderArea.offset = vk::Offset2D{ 0, 0 };      //Start point of render pass in pixels
         renderPassInfo.renderArea.extent = m_Swapchain->GetExtent();  //Size of region to run render pass
         vk::ClearValue clearValue;
-        clearValue.color = { std::array<float, 4>{0.f, 0.1f, 0.9f, 1.0f} };  //TODO depth attachment clear value
+        clearValue.color = { std::array<float, 4>{0.f, 0.01f, 0.2f, 1.0f} };  //TODO depth attachment clear value
         renderPassInfo.clearValueCount = 1;
         renderPassInfo.pClearValues = &clearValue;
 
         auto frame = m_Swapchain->GetFrameBuffer(index);
         renderPassInfo.framebuffer = frame;
 
-        auto buffer = m_CommandPool->RequestCommandBuffer(index);
+        auto& buffer = m_CommandPool->RequestCommandBuffer(index);
 
         //Start recording command buffer
         VK_CHECK(buffer.begin(&info));
 
-            buffer.beginRenderPass(&renderPassInfo, vk::SubpassContents::eInline);
+        buffer.beginRenderPass(&renderPassInfo, vk::SubpassContents::eInline);
 
-                SetViewportAndSissor(buffer);
-                buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, m_GraphicsPipeline->GetHandle());
-                buffer.draw(3, 1, 0, 0);
+        SetViewportAndScissor(buffer);
+        buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, m_GraphicsPipeline->GetHandle());
+        buffer.draw(3, 1, 0, 0);
 
-            buffer.endRenderPass();
+        buffer.endRenderPass();
 
         //End recording
         buffer.end();
     }
 
-    void VulkanRenderer::SetViewportAndSissor(vk::CommandBuffer buffer) const
+    void VulkanRenderer::SetViewportAndScissor(vk::CommandBuffer buffer) const
     {
         vk::Viewport viewport{};
         viewport.width = static_cast<float>(m_Swapchain->GetExtent().width);
@@ -519,27 +510,14 @@ namespace prm
     {
         RecordCommandBuffer(index);
 
-        auto renderSemaphore = m_Swapchain->GetRenderSemaphore(index);
-        auto presentSemaphore = m_Swapchain->GetPresentSemaphore(index);
-
-        vk::SubmitInfo submitInfo;
-        submitInfo.waitSemaphoreCount = 1;
-        submitInfo.pWaitSemaphores = &renderSemaphore;
-        const vk::PipelineStageFlags waitStage{ vk::PipelineStageFlagBits::eColorAttachmentOutput };
-        submitInfo.pWaitDstStageMask = &waitStage;
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &m_CommandPool->RequestCommandBuffer(index);
-        submitInfo.signalSemaphoreCount = 1;
-        submitInfo.pSignalSemaphores = &presentSemaphore;
-
-        VK_CHECK(m_GraphicsQueue.submit(1, &submitInfo, m_Swapchain->GetFence(index)));
+        m_Swapchain->SubmitCommandBuffers(&m_CommandPool->RequestCommandBuffer(index), index);
     }
 
     void VulkanRenderer::CreateLogicalDevice(const std::vector<const char*>& requiredDeviceExtensions)
     {
         CheckDeviceExtensionsSupport(requiredDeviceExtensions);
 
-        const std::set<int32_t> queueFamilyIndices{ m_QueueFamilyIndices.presentFamily, m_QueueFamilyIndices.graphicsFamily };
+        const std::set<int32_t> queueFamilyIndices{ m_RenderContext.r_QueueFamilyIndices.presentFamily, m_RenderContext.r_QueueFamilyIndices.graphicsFamily };
         std::vector<vk::DeviceQueueCreateInfo> queueInfos;
 
         for (const int32_t index : queueFamilyIndices)
@@ -560,21 +538,21 @@ namespace prm
         const vk::PhysicalDeviceFeatures features{};
         deviceInfo.pEnabledFeatures = &features;
 
-        VK_CHECK(m_GPU.createDevice(&deviceInfo, nullptr, &m_LogicalDevice));
+        VK_CHECK(m_RenderContext.r_GPU.createDevice(&deviceInfo, nullptr, &m_RenderContext.r_Device));
 
         //Queues are created at the same time as the device, we need to get the handle
         //Given logical device, of given queue family, of given queue index, get the handle
-        m_GraphicsQueue = m_LogicalDevice.getQueue(m_QueueFamilyIndices.graphicsFamily, 0);
-        m_PresentationQueue = m_LogicalDevice.getQueue(m_QueueFamilyIndices.presentFamily, 0);
+        m_RenderContext.r_GraphicsQueue = m_RenderContext.r_Device.getQueue(m_RenderContext.r_QueueFamilyIndices.graphicsFamily, 0);
+        m_RenderContext.r_PresentQueue = m_RenderContext.r_Device.getQueue(m_RenderContext.r_QueueFamilyIndices.presentFamily, 0);
     }
 
     void VulkanRenderer::CheckDeviceExtensionsSupport(const std::vector<const char*>& required_extensions)
     {
         uint32_t device_extension_count;
-        VK_CHECK(m_GPU.enumerateDeviceExtensionProperties(nullptr, &device_extension_count, nullptr));
+        VK_CHECK(m_RenderContext.r_GPU.enumerateDeviceExtensionProperties(nullptr, &device_extension_count, nullptr));
 
         std::vector<vk::ExtensionProperties> available_device_extensions(device_extension_count);
-        VK_CHECK(m_GPU.enumerateDeviceExtensionProperties(nullptr, &device_extension_count, available_device_extensions.data()));
+        VK_CHECK(m_RenderContext.r_GPU.enumerateDeviceExtensionProperties(nullptr, &device_extension_count, available_device_extensions.data()));
 
         auto extension_error = false;
         for (const auto* extension : required_extensions)
@@ -595,13 +573,25 @@ namespace prm
         }
     }
 
-    void VulkanRenderer::RecreateSwapchain(Window::Extent windowExtent)
+    void VulkanRenderer::RecreateSwapchain()
     {
-        m_LogicalDevice.waitIdle();//Wait for all resources to finish being used
+        vk::SurfaceCapabilitiesKHR surface_properties = m_RenderContext.r_GPU.getSurfaceCapabilitiesKHR(m_RenderContext.r_Surface);
+        if (m_Swapchain)
+        {
+            // Only rebuild the swapchain if the dimensions have changed
+            if (surface_properties.currentExtent.width == m_Swapchain->GetExtent().width &&
+                surface_properties.currentExtent.height == m_Swapchain->GetExtent().height)
+            {
+                return;
+            }
+        }
+
+        const auto windowExtent = surface_properties.currentExtent;
+
+        m_RenderContext.r_Device.waitIdle();//Wait for all resources to finish being used
 
         m_Swapchain.reset();
-        m_Swapchain = std::make_unique<Swapchain>(m_LogicalDevice, m_GPU, m_Surface,
-            m_QueueFamilyIndices, vk::Extent2D{ windowExtent.width,  windowExtent.height });
+        m_Swapchain = std::make_unique<Swapchain>(m_RenderContext, windowExtent);
 
         const auto vertexShaderCode = read_shader_file("output/triangle_vert.spv");
         const auto fragmentShaderCode = read_shader_file("output/triangle_frag.spv");
@@ -621,11 +611,11 @@ namespace prm
         layoutInfo.setLayoutCount = 0;
         layoutInfo.pushConstantRangeCount = 0;
         layoutInfo.pPushConstantRanges = nullptr;
-        if(m_PipeLayout)
+        if (m_PipeLayout)
         {
-            m_LogicalDevice.destroyPipelineLayout(m_PipeLayout);
+            m_RenderContext.r_Device.destroyPipelineLayout(m_PipeLayout);
         }
-        VK_CHECK(m_LogicalDevice.createPipelineLayout(&layoutInfo, nullptr, &m_PipeLayout));
+        VK_CHECK(m_RenderContext.r_Device.createPipelineLayout(&layoutInfo, nullptr, &m_PipeLayout));
 
         CreateRenderPass();
         m_Swapchain->InitFrameBuffers(m_RenderPass);
@@ -639,9 +629,7 @@ namespace prm
         pipeState.SetRenderPass(m_RenderPass);
         pipeState.SetColorBlendState(blendState);
 
-        m_GraphicsPipeline = std::make_unique<GraphicsPipeline>(m_LogicalDevice, m_PipeCache, pipeState, shaderInfos);
-
-        m_CommandPool = std::make_unique<CommandPool>(m_LogicalDevice, m_QueueFamilyIndices);
-        m_CommandPool->CreateCommandBuffers(m_Swapchain->GetImagesCount());
+        m_GraphicsPipeline.reset();
+        m_GraphicsPipeline = std::make_unique<GraphicsPipeline>(m_RenderContext.r_Device, m_PipeCache, pipeState, shaderInfos);
     }
 }

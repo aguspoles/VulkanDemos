@@ -10,6 +10,19 @@ namespace prm
         bool IsValid() const { return graphicsFamily != -1 && presentFamily != -1; }
     };
 
+    struct RenderContext
+    {
+        vk::Instance r_Instance;
+        vk::Device r_Device;
+        vk::PhysicalDevice r_GPU;
+        vk::SurfaceKHR r_Surface;
+        vk::Queue r_GraphicsQueue;
+        vk::Queue r_PresentQueue;
+
+        QueueFamilyIndices r_QueueFamilyIndices{};
+    };
+
+
     struct DebugInfo
     {
         vk::DebugUtilsMessengerCreateInfoEXT debug_utils_create_info{};

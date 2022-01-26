@@ -74,6 +74,8 @@ namespace prm
 
         virtual const char** GetInstanceExtensions(uint32_t& count) const = 0;
 
+        virtual void WaitEvents() {}
+
     protected:
         Properties m_Properties;
     };

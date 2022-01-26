@@ -23,6 +23,6 @@ namespace prm
         void HandleInputEvent(const InputEvent& input_event) override;
 
     private:
-        VulkanRenderer m_Renderer;
+        std::unique_ptr<VulkanRenderer> m_Renderer;
     };
 }

@@ -6,20 +6,22 @@
 
 namespace prm
 {
-    DemoApplication::DemoApplication() 
+    DemoApplication::DemoApplication()
     {
         SetName("Demo");
     }
 
     DemoApplication::~DemoApplication()
     {
+        m_Renderer.reset();
     }
 
     bool DemoApplication::Prepare(Platform& _platform)
     {
         Application::Prepare(_platform);
 
-        m_Renderer.Init(_platform.GetWindow());
+        m_Renderer = std::make_unique<VulkanRenderer>(*m_Platform);
+        m_Renderer->Init();
 
         return true;
     }
@@ -27,7 +29,11 @@ namespace prm
     bool DemoApplication::Resize(const uint32_t width, const uint32_t height)
     {
         Application::Resize(width, height);
-        m_Renderer.RecreateSwapchain(Window::Extent{ width, height });
+        if(width == 0 || height == 0)
+        {
+            return false;
+        }
+        m_Renderer->RecreateSwapchain();
         return true;
     }
 
@@ -37,7 +43,13 @@ namespace prm
 
     void DemoApplication::Update(float delta_time)
     {
-        m_Renderer.Draw(m_Platform->GetWindow().GetExtent());
+        if (m_Platform->GetWindow().GetExtent().width == 0 || m_Platform->GetWindow().GetExtent().height == 0)
+        {
+            return;
+        }
+
+        m_Renderer->Draw();
+
         Application::Update(delta_time);
     }
 

@@ -6,7 +6,7 @@ namespace prm
     class Swapchain
     {
     public:
-        Swapchain(vk::Device device, vk::PhysicalDevice gpu, vk::SurfaceKHR surface, const QueueFamilyIndices& queueFamilyIndices, vk::Extent2D windowExtent);
+        Swapchain(RenderContext& renderContext, vk::Extent2D windowExtent);
 
         Swapchain(const Swapchain&) = delete;
 
@@ -24,6 +24,8 @@ namespace prm
 
         vk::Result AcquireNextImage(uint32_t& image);
 
+        vk::Result SubmitCommandBuffers(const vk::CommandBuffer* buffers, uint32_t imageIndex);
+
         vk::Format GetImageFormat() const { return m_SwapchainImageFormat; }
 
         uint32_t GetImagesCount() const { return static_cast<uint32_t>(m_SwapchainImages.size()); }
@@ -32,38 +34,30 @@ namespace prm
 
         vk::Extent2D GetExtent() const { return m_SwapchainExtent; }
 
-        vk::Semaphore GetRenderSemaphore(uint32_t imageIndex) const;
-        vk::Semaphore GetPresentSemaphore(uint32_t imageIndex) const;
-        vk::Fence GetFence(uint32_t imageIndex) const;
-
     private:
         SwapchainDetails GetSwapchainDetails(const vk::PhysicalDevice& gpu) const;
         vk::SurfaceFormatKHR ChooseFormat(const std::vector<vk::SurfaceFormatKHR>& formats);
         vk::PresentModeKHR ChoosePresentMode(vk::PresentModeKHR request_present_mode, const std::vector<vk::PresentModeKHR>& available_present_modes);
         vk::Extent2D ChooseSwapchainExtent(vk::SurfaceCapabilitiesKHR capabilities, vk::Extent2D windowExtent);
+
         vk::ImageView CreateImageView(vk::Image image, vk::Format format, vk::ImageAspectFlagBits aspect);
         void CreateFrameBuffers();
+        void CreateSyncObjects();
 
-        vk::Device m_LogicalDevice;
-        vk::PhysicalDevice m_GPU;
-        vk::SurfaceKHR m_Surface;
+        RenderContext& m_RenderContext;
         vk::SwapchainKHR m_Handle;
 
         vk::Format m_SwapchainImageFormat;
         vk::Extent2D m_SwapchainExtent;
         std::vector<SwapchainImage> m_SwapchainImages;
         std::vector<vk::Framebuffer> m_FrameBuffers;
-        QueueFamilyIndices m_QueueFamilyIndices{};
 
-        struct Semaphores
-        {
-            vk::Semaphore renderSemaphore;
-            vk::Semaphore presentSemaphore;
-        };
-        std::vector<Semaphores> m_RecycledSemaphores;
-        std::vector<Semaphores> m_SemaphoreByImageIndex;
+        std::vector<vk::Semaphore> imageAvailableSemaphores;
+        std::vector<vk::Semaphore> renderFinishedSemaphores;
 
-        std::vector<vk::Fence> m_Fences;
+        std::vector<vk::Fence> inFlightFences;
+        std::vector<vk::Fence> imagesInFlight;
+        uint32_t currentFrame = 0;
     };
 }
 

@@ -25,11 +25,14 @@ namespace prm
 
         void window_size_callback(GLFWwindow* window, int width, int height)
         {
-            while(width == 0 || height == 0)
+            if (auto platform = reinterpret_cast<Platform*>(glfwGetWindowUserPointer(window)))
             {
-                glfwWaitEvents();
+                platform->Resize(width, height);
             }
+        }
 
+        void framebuffer_size_callback(GLFWwindow* window, int width, int height)
+        {
             if (auto platform = reinterpret_cast<Platform*>(glfwGetWindowUserPointer(window)))
             {
                 platform->Resize(width, height);
@@ -259,6 +262,7 @@ namespace prm
 
         glfwSetErrorCallback(error_callback);
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+        glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
         switch (properties.mode)
         {
@@ -297,6 +301,7 @@ namespace prm
 
         glfwSetWindowCloseCallback(m_Handle, window_close_callback);
         glfwSetWindowSizeCallback(m_Handle, window_size_callback);
+        glfwSetFramebufferSizeCallback(m_Handle, framebuffer_size_callback);
         glfwSetWindowFocusCallback(m_Handle, window_focus_callback);
         glfwSetKeyCallback(m_Handle, key_callback);
         glfwSetCursorPosCallback(m_Handle, cursor_position_callback);
@@ -380,5 +385,10 @@ namespace prm
     const char** GlfwWindow::GetInstanceExtensions(uint32_t& count) const
     {
         return glfwGetRequiredInstanceExtensions(&count);
+    }
+
+    void GlfwWindow::WaitEvents()
+    {
+        return glfwWaitEvents();
     }
 } 

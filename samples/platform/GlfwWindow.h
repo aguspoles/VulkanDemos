@@ -31,6 +31,8 @@ namespace prm
 
         const char** GetInstanceExtensions(uint32_t& count) const override;
 
+        void WaitEvents() override;
+
     private:
         GLFWwindow* m_Handle = nullptr;
     };

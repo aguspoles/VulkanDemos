@@ -221,8 +221,9 @@ namespace prm
 
     void Platform::Resize(uint32_t width, uint32_t height)
     {
-        const auto extent = Window::Extent{ std::max<uint32_t>(width, MIN_WINDOW_WIDTH),
-            std::max<uint32_t>(height, MIN_WINDOW_HEIGHT) };
+        const auto extent = Window::Extent{ std::max<uint32_t>(width, 0),
+            std::max<uint32_t>(height, 0) };
+
         if (m_Window)
         {
             const auto actual_extent = m_Window->Resize(extent);
