@@ -1,12 +1,13 @@
 #pragma once
-#include "render/Utilities.h"
 
 namespace prm
 {
+    class CommandBuffer;
+
     class CommandPool
     {
     public:
-        CommandPool(vk::Device& device, const QueueFamilyIndices& queueIndices);
+        CommandPool(vk::Device& device, uint32_t queueIndex);
 
         CommandPool(const CommandPool&) = delete;
 
@@ -18,21 +19,16 @@ namespace prm
 
         CommandPool& operator=(CommandPool&&) = delete;
 
-        void CreateCommandBuffers(uint32_t count);
+        CommandBuffer& RequestCommandBuffer(uint32_t index);
 
-        vk::CommandBuffer& RequestCommandBuffer(uint32_t index);
+        vk::CommandPool GetHandle() const { return m_Handle; }
 
-        vk::CommandPool GetGraphicsPool() const { return m_GraphicsPool; }
-
-        void FreeCommandBuffers();
-
-        uint32_t GetBufferCount() const { return m_BufferCount; }
+        vk::Device GetDevice() const { return m_Device; }
 
     private:
-        vk::CommandPool m_GraphicsPool;
-        std::vector<vk::CommandBuffer> m_CommandBuffers;
+        vk::CommandPool m_Handle;
+        std::vector<std::unique_ptr<CommandBuffer>> m_CommandBuffers;
         vk::Device m_Device;
-        uint32_t m_BufferCount = 0;
     };
 }
 

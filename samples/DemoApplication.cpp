@@ -24,6 +24,10 @@ namespace prm
         Application::Prepare(_platform);
 
         m_Renderer = std::make_unique<VulkanRenderer>(*m_Platform);
+
+        m_Renderer->SetVertexShader("output/triangle_vert.spv");
+        m_Renderer->SetFragmentShader("output/triangle_frag.spv");
+
         m_Renderer->Init();
 
         const auto& context = m_Renderer->GetRenderContext();

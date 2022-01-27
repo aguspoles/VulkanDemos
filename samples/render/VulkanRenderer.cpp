@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "VulkanRenderer.h"
 
+#include "CommandBuffer.h"
 #include "CommandPool.h"
 #include "core/Logger.h"
 #include "render/GraphicsPipeline.h"
@@ -105,7 +106,7 @@ namespace prm
 
         m_RenderContext.r_Device.waitIdle(); //Wait for all resources to finish being used
 
-        m_CommandPool.reset();
+        m_GraphicsCommandPool.reset();
 
         m_GraphicsPipeline.reset();
         if (m_PipeLayout)
@@ -157,9 +158,8 @@ namespace prm
 
         VULKAN_HPP_DEFAULT_DISPATCHER.init(m_RenderContext.r_Device);
 
-        //TODO move outside renderer
-        const auto vertexShaderCode = read_shader_file("output/triangle_vert.spv");
-        const auto fragmentShaderCode = read_shader_file("output/triangle_frag.spv");
+        const auto vertexShaderCode = read_shader_file(m_VertexShaderPath);
+        const auto fragmentShaderCode = read_shader_file(m_FragmentShaderPath);
         ShaderInfo vertInfo;
         vertInfo.stage = vk::ShaderStageFlagBits::eVertex;
         vertInfo.entryPoint = "main";
@@ -177,8 +177,7 @@ namespace prm
 
         m_GraphicsPipeline = std::make_unique<GraphicsPipeline>(m_RenderContext.r_Device, m_PipeCache, m_PipelineState, m_ShaderInfos);
 
-        m_CommandPool = std::make_unique<CommandPool>(m_RenderContext.r_Device, m_RenderContext.r_QueueFamilyIndices);
-        m_CommandPool->CreateCommandBuffers(m_Swapchain->GetImagesCount());
+        m_GraphicsCommandPool = std::make_unique<CommandPool>(m_RenderContext.r_Device, m_RenderContext.r_QueueFamilyIndices.graphicsFamily);
     }
 
     void VulkanRenderer::Draw(const Mesh& mesh)
@@ -472,26 +471,31 @@ namespace prm
         auto frame = m_Swapchain->GetFrameBuffer(index);
         renderPassInfo.framebuffer = frame;
 
-        auto& buffer = m_CommandPool->RequestCommandBuffer(index);
+        auto& buffer = m_GraphicsCommandPool->RequestCommandBuffer(index);
+        auto bufferHandle = buffer.GetHandle();
 
         //Start recording command buffer
-        VK_CHECK(buffer.begin(&info));
+        VK_CHECK(bufferHandle.begin(&info));
 
-        buffer.beginRenderPass(&renderPassInfo, vk::SubpassContents::eInline);
+        {
+            bufferHandle.beginRenderPass(&renderPassInfo, vk::SubpassContents::eInline);
 
-        SetViewportAndScissor(buffer);
+            {
+                SetViewportAndScissor(bufferHandle);
 
-        buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, m_GraphicsPipeline->GetHandle());
-        vk::Buffer vertexBuffer[] = { mesh.GetVertexBuffer() };
-        vk::DeviceSize offset[] = { 0 };
-        buffer.bindVertexBuffers(0, 1, vertexBuffer, offset);
+                bufferHandle.bindPipeline(vk::PipelineBindPoint::eGraphics, m_GraphicsPipeline->GetHandle());
+                vk::Buffer vertexBuffer[] = { mesh.GetVertexBuffer() };
+                vk::DeviceSize offset[] = { 0 };
+                bufferHandle.bindVertexBuffers(0, 1, vertexBuffer, offset);
 
-        buffer.draw(mesh.GetVertexCount(), 1, 0, 0);
+                bufferHandle.draw(mesh.GetVertexCount(), 1, 0, 0);
+            }
 
-        buffer.endRenderPass();
+            bufferHandle.endRenderPass();
+        }
 
         //End recording
-        buffer.end();
+        bufferHandle.end();
     }
 
     void VulkanRenderer::SetViewportAndScissor(vk::CommandBuffer buffer) const
@@ -512,7 +516,8 @@ namespace prm
     {
         RecordCommandBuffer(index, mesh);
 
-        m_Swapchain->SubmitCommandBuffers(&m_CommandPool->RequestCommandBuffer(index), index);
+        auto buffer = m_GraphicsCommandPool->RequestCommandBuffer(index).GetHandle();
+        m_Swapchain->SubmitCommandBuffers(&buffer, index);
     }
 
     void VulkanRenderer::CreateLogicalDevice(const std::vector<const char*>& requiredDeviceExtensions)
@@ -599,13 +604,9 @@ namespace prm
         else
         {
             m_Swapchain = std::make_unique<Swapchain>(m_RenderContext, windowExtent, std::move(m_Swapchain));
-            if(m_Swapchain->GetImagesCount() != m_CommandPool->GetBufferCount())
-            {
-                m_CommandPool->FreeCommandBuffers();
-                m_CommandPool->CreateCommandBuffers(m_Swapchain->GetImagesCount());
-            }
         }
 
+        //Pipeline depends on swapchain extent
         m_GraphicsPipeline = std::make_unique<GraphicsPipeline>(m_RenderContext.r_Device, m_PipeCache, m_PipelineState, m_ShaderInfos);
     }
 }

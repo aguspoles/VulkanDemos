@@ -29,6 +29,9 @@ namespace prm
         void Draw(const Mesh& mesh);
         void RecreateSwapchain();
 
+        void SetVertexShader(const std::string& filePath) { m_VertexShaderPath = filePath; }
+        void SetFragmentShader(const std::string& filePath) { m_FragmentShaderPath = filePath; }
+
         const RenderContext& GetRenderContext() const { return m_RenderContext; }
 
     private:
@@ -45,7 +48,10 @@ namespace prm
 
         std::unique_ptr<Swapchain> m_Swapchain{nullptr};
         std::unique_ptr<GraphicsPipeline> m_GraphicsPipeline{nullptr};
-        std::unique_ptr<CommandPool> m_CommandPool{ nullptr };
+        std::unique_ptr<CommandPool> m_GraphicsCommandPool{ nullptr };
+
+        std::string m_VertexShaderPath;
+        std::string m_FragmentShaderPath;
 
 #if defined(VKB_DEBUG)
         DebugInfo m_DebugInfo;
