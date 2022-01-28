@@ -8,6 +8,8 @@
 #include "render/Swapchain.h"
 #include "render/CommandPool.h"
 #include "render/Mesh.h"
+#include "scene/GameObject.h"
+#include "scene/Camera.h"
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
@@ -177,10 +179,10 @@ namespace prm
 
         m_GraphicsPipeline = std::make_unique<GraphicsPipeline>(m_RenderContext.r_Device, m_PipeCache, m_PipelineState, m_ShaderInfos);
 
-        m_GraphicsCommandPool = std::make_unique<CommandPool>(m_RenderContext.r_Device, m_RenderContext.r_QueueFamilyIndices.graphicsFamily);
+        m_GraphicsCommandPool = std::make_unique<CommandPool>(m_RenderContext);
     }
 
-    void VulkanRenderer::Draw(const Mesh& mesh)
+    void VulkanRenderer::Draw(const std::vector<GameObject>& gameObjects, const Camera& camera)
     {
         uint32_t index;
 
@@ -199,7 +201,7 @@ namespace prm
             return;
         }
 
-        Render(index, mesh);
+        Render(index, gameObjects, camera);
 
         // Handle Outdated error in present.
         if (res == vk::Result::eSuboptimalKHR || res == vk::Result::eErrorOutOfDateKHR)
@@ -422,11 +424,16 @@ namespace prm
 
     void VulkanRenderer::CreatePipelineLayout()
     {
+        vk::PushConstantRange pushConstantRange;
+        pushConstantRange.stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
+        pushConstantRange.offset = 0;
+        pushConstantRange.size = sizeof(SimplePushConstantData);
+
         vk::PipelineLayoutCreateInfo layoutInfo;
         layoutInfo.pSetLayouts = nullptr;
         layoutInfo.setLayoutCount = 0;
-        layoutInfo.pushConstantRangeCount = 0;
-        layoutInfo.pPushConstantRanges = nullptr;
+        layoutInfo.pushConstantRangeCount = 1;
+        layoutInfo.pPushConstantRanges = &pushConstantRange;
         if (m_PipeLayout)
         {
             m_RenderContext.r_Device.destroyPipelineLayout(m_PipeLayout);
@@ -438,15 +445,8 @@ namespace prm
         blendState.attachments.push_back(blendAttState);
 
         VertexInputState vertexData;
-        vertexData.attributes.resize(1);
-        vertexData.attributes[0].binding = 0;
-        vertexData.attributes[0].location = 0;
-        vertexData.attributes[0].offset = offsetof(Vertex, position); //Where this attribute is defined in a single vertex
-        vertexData.attributes[0].format = vk::Format::eR32G32B32A32Sfloat;
-        vertexData.bindings.resize(1);
-        vertexData.bindings[0].binding = 0;
-        vertexData.bindings[0].stride = sizeof(Vertex);
-        vertexData.bindings[0].inputRate = vk::VertexInputRate::eVertex; //How to move between data after each vertex
+        vertexData.attributes = Mesh::Vertex::getAttributeDescriptions();
+        vertexData.bindings = Mesh::Vertex::getBindingDescriptions();
 
         m_PipelineState.SetPipelineLayout(m_PipeLayout);
         m_PipelineState.SetRenderPass(m_Swapchain->GetRenderPass());
@@ -454,19 +454,22 @@ namespace prm
         m_PipelineState.SetVertexInputState(vertexData);
     }
 
-    void VulkanRenderer::RecordCommandBuffer(uint32_t index, const Mesh& mesh) const
+    void VulkanRenderer::RecordCommandBuffer(uint32_t index, const std::vector<GameObject>& gameObjects, const Camera& camera) const
     {
         vk::CommandBufferBeginInfo info;
         info.flags = vk::CommandBufferUsageFlagBits::eSimultaneousUse; //Means buffer can be resubmitted when it is already submitted and waiting for execution
 
         vk::RenderPassBeginInfo renderPassInfo;
-        renderPassInfo.renderPass = m_Swapchain->GetRenderPass();                     //Render pass to begin
-        renderPassInfo.renderArea.offset = vk::Offset2D{ 0, 0 };      //Start point of render pass in pixels
+        renderPassInfo.renderPass = m_Swapchain->GetRenderPass();   //Render pass to begin
+        renderPassInfo.renderArea.offset = vk::Offset2D{ 0, 0 };  //Start point of render pass in pixels
         renderPassInfo.renderArea.extent = m_Swapchain->GetExtent();  //Size of region to run render pass
-        vk::ClearValue clearValue;
-        clearValue.color = { std::array<float, 4>{0.f, 0.01f, 0.2f, 1.0f} };  //TODO depth attachment clear value
-        renderPassInfo.clearValueCount = 1;
-        renderPassInfo.pClearValues = &clearValue;
+
+        std::array<vk::ClearValue, 2> clearValues{};
+        clearValues[0].color = vk::ClearColorValue{ std::array<float, 4>{0.f, 0.01f, 0.2f, 1.0f} };
+        clearValues[1].depthStencil = vk::ClearDepthStencilValue{ 1.f, 0 };
+
+        renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+        renderPassInfo.pClearValues = clearValues.data();
 
         auto frame = m_Swapchain->GetFrameBuffer(index);
         renderPassInfo.framebuffer = frame;
@@ -484,11 +487,25 @@ namespace prm
                 SetViewportAndScissor(bufferHandle);
 
                 bufferHandle.bindPipeline(vk::PipelineBindPoint::eGraphics, m_GraphicsPipeline->GetHandle());
-                vk::Buffer vertexBuffer[] = { mesh.GetVertexBuffer() };
-                vk::DeviceSize offset[] = { 0 };
-                bufferHandle.bindVertexBuffers(0, 1, vertexBuffer, offset);
 
-                bufferHandle.draw(mesh.GetVertexCount(), 1, 0, 0);
+                auto projectionView = camera.GetProjectionMatrix() * camera.GetViewMatrix();
+                for (const auto& go : gameObjects)
+                {
+                    SimplePushConstantData push{};
+                    auto modelMatrix = go.transform.mat4();
+                    push.transform = projectionView * modelMatrix;
+                    push.modelMatrix = modelMatrix;
+
+                    bufferHandle.pushConstants(
+                        m_PipeLayout,
+                        vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+                        0,
+                        sizeof(SimplePushConstantData),
+                        &push);
+
+                    go.model->Bind(bufferHandle);
+                    go.model->Draw(bufferHandle);
+                }
             }
 
             bufferHandle.endRenderPass();
@@ -512,12 +529,12 @@ namespace prm
         buffer.setScissor(0, { scissor });
     }
 
-    void VulkanRenderer::Render(uint32_t index, const Mesh& mesh)
+    void VulkanRenderer::Render(uint32_t index, const std::vector<GameObject>& gameObjects, const Camera& camera)
     {
-        RecordCommandBuffer(index, mesh);
+        RecordCommandBuffer(index, gameObjects, camera);
 
         auto buffer = m_GraphicsCommandPool->RequestCommandBuffer(index).GetHandle();
-        m_Swapchain->SubmitCommandBuffers(&buffer, index);
+        m_Swapchain->SubmitCommandBuffers(buffer, index);
     }
 
     void VulkanRenderer::CreateLogicalDevice(const std::vector<const char*>& requiredDeviceExtensions)
@@ -608,5 +625,10 @@ namespace prm
 
         //Pipeline depends on swapchain extent
         m_GraphicsPipeline = std::make_unique<GraphicsPipeline>(m_RenderContext.r_Device, m_PipeCache, m_PipelineState, m_ShaderInfos);
+    }
+
+    float VulkanRenderer::GetAspectRatio() const
+    {
+        return static_cast<float>(m_Swapchain->GetExtent().width) / static_cast<float>(m_Swapchain->GetExtent().height);
     }
 }

@@ -23,11 +23,11 @@ namespace prm
 
         vk::Result AcquireNextImage(uint32_t& image);
 
-        vk::Result SubmitCommandBuffers(const vk::CommandBuffer* buffers, uint32_t imageIndex);
+        vk::Result SubmitCommandBuffers(const vk::CommandBuffer buffers, uint32_t imageIndex);
 
         vk::Format GetImageFormat() const { return m_SwapchainImageFormat; }
 
-        uint32_t GetImagesCount() const { return static_cast<uint32_t>(m_SwapchainImages.size()); }
+        uint32_t GetImagesCount() const { return static_cast<uint32_t>(m_ColorImages.size()); }
 
         vk::Framebuffer GetFrameBuffer(uint32_t imageIndex) const { return m_FrameBuffers[imageIndex]; }
 
@@ -42,22 +42,33 @@ namespace prm
         vk::SurfaceFormatKHR ChooseFormat(const std::vector<vk::SurfaceFormatKHR>& formats);
         vk::PresentModeKHR ChoosePresentMode(vk::PresentModeKHR request_present_mode, const std::vector<vk::PresentModeKHR>& available_present_modes);
         vk::Extent2D ChooseSwapchainExtent(vk::SurfaceCapabilitiesKHR capabilities, vk::Extent2D windowExtent);
+        vk::Format FindDepthFormat() const;
 
         vk::ImageView CreateImageView(vk::Image image, vk::Format format, vk::ImageAspectFlagBits aspect);
         void CreateFrameBuffers();
         void CreateRenderPass();
+        void CreateDepthResources();
         void CreateSyncObjects();
 
         RenderContext& m_RenderContext;
         vk::SwapchainKHR m_Handle;
         std::shared_ptr<Swapchain> m_OldSwapchain;
-
-        vk::Format m_SwapchainImageFormat;
         vk::Extent2D m_SwapchainExtent;
-        std::vector<SwapchainImage> m_SwapchainImages;
+
+        //Frame data
         std::vector<vk::Framebuffer> m_FrameBuffers;
         vk::RenderPass m_RenderPass;
 
+        //Color images
+        vk::Format m_SwapchainImageFormat;
+        std::vector<SwapchainImage> m_ColorImages;
+
+        //Depth images
+        vk::Format m_DepthFormat;
+        std::vector<SwapchainImage> m_DepthImages;
+        std::vector<vk::DeviceMemory> m_DepthImageMemorys;
+
+        //Sync objects
         std::vector<vk::Semaphore> m_ImageAvailableSemaphores;
         std::vector<vk::Semaphore> m_RenderFinishedSemaphores;
 

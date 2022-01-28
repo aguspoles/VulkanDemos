@@ -307,6 +307,7 @@ namespace prm
         glfwSetCursorPosCallback(m_Handle, cursor_position_callback);
         glfwSetMouseButtonCallback(m_Handle, mouse_button_callback);
 
+        //glfwSetInputMode(m_Handle, GLFW_CURSOR, GLFW_CURSOR_DISABLED); //Comment this if you want to see the cursor
         glfwSetInputMode(m_Handle, GLFW_STICKY_KEYS, 1);
         glfwSetInputMode(m_Handle, GLFW_STICKY_MOUSE_BUTTONS, 1);
     }

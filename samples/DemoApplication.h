@@ -1,6 +1,8 @@
 #pragma once
 #include "platform/Application.h"
 #include "render/VulkanRenderer.h"
+#include "scene/GameObject.h"
+#include "scene/Camera.h"
 
 namespace prm
 {
@@ -13,7 +15,7 @@ namespace prm
     public:
         DemoApplication();
 
-        ~DemoApplication();
+        ~DemoApplication() override;
 
         bool Prepare(Platform& platform) override;
 
@@ -25,6 +27,14 @@ namespace prm
 
     private:
         std::unique_ptr<VulkanRenderer> m_Renderer;
-        std::unique_ptr<Mesh> m_Mesh;
+        std::shared_ptr<Mesh> m_Mesh;
+        std::shared_ptr<Mesh> m_Mesh2;
+        std::vector<GameObject> m_GameObjects;
+        Camera m_Camera;
+
+        float m_DeltaTime;
+
+        float m_LastMouseX;
+        float m_LastMouseY;
     };
 }

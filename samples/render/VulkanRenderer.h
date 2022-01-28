@@ -10,6 +10,8 @@ namespace prm
     class Swapchain;
     class CommandPool;
     class Mesh;
+    class GameObject;
+    class Camera;
 
     class VulkanRenderer
     {
@@ -26,13 +28,16 @@ namespace prm
         VulkanRenderer& operator=(VulkanRenderer&&) = delete;
 
         void Init();
-        void Draw(const Mesh& mesh);
+        void Draw(const std::vector<GameObject>& gameObjects, const Camera& camera);
         void RecreateSwapchain();
 
         void SetVertexShader(const std::string& filePath) { m_VertexShaderPath = filePath; }
         void SetFragmentShader(const std::string& filePath) { m_FragmentShaderPath = filePath; }
 
         const RenderContext& GetRenderContext() const { return m_RenderContext; }
+        CommandPool& GetCommandPool() { return *m_GraphicsCommandPool; }
+
+        float GetAspectRatio() const;
 
     private:
         Platform& m_Platform;
@@ -71,11 +76,11 @@ namespace prm
 
         void CreatePipelineLayout();
 
-        void RecordCommandBuffer(uint32_t index, const Mesh& mesh) const;
+        void RecordCommandBuffer(uint32_t index, const std::vector<GameObject>& gameObjects, const Camera& camera) const;
 
         void SetViewportAndScissor(vk::CommandBuffer buffer) const;
 
-        void Render(uint32_t index, const Mesh& mesh);
+        void Render(uint32_t index, const std::vector<GameObject>& gameObjects, const Camera& camera);
     };
 }
 

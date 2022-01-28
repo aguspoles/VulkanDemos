@@ -27,7 +27,7 @@ namespace prm
 
         vk::CullModeFlags cull_mode{ vk::CullModeFlagBits::eBack };
 
-        vk::FrontFace front_face{ vk::FrontFace::eClockwise };
+        vk::FrontFace front_face{ vk::FrontFace::eCounterClockwise };
 
         vk::Bool32 depth_bias_enable{ VK_FALSE };
     };
@@ -71,8 +71,10 @@ namespace prm
 
         vk::Bool32 depth_write_enable{ VK_TRUE };
 
-        // Note: Using Reversed depth-buffer for increased precision, so Greater depth values are kept
-        vk::CompareOp depth_compare_op{ vk::CompareOp::eGreater };
+        // Note: If using Reversed depth-buffer(vk::CompareOp::eGreater) for increased precision and Greater depth values are kept,
+        // then clear value of depth attachment must be set to 0 in the RenderPassBeginInfo and I think rasterization state FrontFace::eCounterClockwise
+        // should change to eClockwise
+        vk::CompareOp depth_compare_op{ vk::CompareOp::eLess };
 
         vk::Bool32 depth_bounds_test_enable{ VK_FALSE };
 

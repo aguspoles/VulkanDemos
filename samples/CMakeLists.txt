@@ -42,6 +42,7 @@ set(CORE_FILES
     core/Logger.cpp
     core/Error.cpp
     core/Helpers.cpp
+    core/glm_defs.h
 )
 
 set(RENDER_FILES
@@ -65,6 +66,13 @@ set(RENDER_FILES
     render/Mesh.cpp
 )
 
+set(SCENE_FILES 
+    scene/Camera.h
+    scene/GameObject.h
+    scene/Camera.cpp
+    scene/GameObject.cpp
+    )
+
 set(LOADER_FILES
     # Header Files
     # Source Files
@@ -75,6 +83,7 @@ source_group("core\\" FILES ${CORE_FILES})
 source_group("platform\\" FILES ${PLATFORM_FILES})
 source_group("render\\" FILES ${RENDER_FILES})
 source_group("loaders\\" FILES ${LOADER_FILES})
+source_group("scene\\" FILES ${SCENE_FILES})
 
 set(PROJECT_FILES
     ${ENGINE_FILES}
@@ -82,6 +91,7 @@ set(PROJECT_FILES
     ${CORE_FILES}
     ${RENDER_FILES}
     ${LOADER_FILES}
+    ${SCENE_FILES}
     )
 
 # Add files based on platform
@@ -140,6 +150,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
     glm
     vulkan
     spdlog
+    tinyobj
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE glfw)

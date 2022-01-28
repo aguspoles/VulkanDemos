@@ -5,6 +5,11 @@
 #include "platform/InputEvents.h"
 #include "render/Mesh.h"
 
+namespace 
+{
+    bool firstMouse = true;
+}
+
 namespace prm
 {
     DemoApplication::DemoApplication()
@@ -15,7 +20,9 @@ namespace prm
     DemoApplication::~DemoApplication()
     {
         m_Renderer->GetRenderContext().r_Device.waitIdle();
+        m_GameObjects.clear();
         m_Mesh.reset();
+        m_Mesh2.reset();
         m_Renderer.reset();
     }
 
@@ -31,12 +38,21 @@ namespace prm
         m_Renderer->Init();
 
         const auto& context = m_Renderer->GetRenderContext();
-        const std::vector<Vertex> vertices = {
-            {{0.f, -0.4f, 0.f}},
-            {{0.4f, 0.4f, 0.f} },
-            {{-0.4f, 0.4f, 0.f} }
-        };
-        m_Mesh = std::make_unique<Mesh>(context.r_GPU, context.r_Device, vertices);
+
+        m_Mesh = Mesh::CreateModelFromFile(context.r_GPU, context.r_Device, m_Renderer->GetCommandPool(), "output/flat_vase.obj");
+        m_Mesh2 = Mesh::CreateModelFromFile(context.r_GPU, context.r_Device, m_Renderer->GetCommandPool(), "output/smooth_vase.obj");
+
+        auto go = GameObject::CreateGameObject();
+        m_GameObjects.push_back(std::move(go));
+        m_GameObjects[0].model = m_Mesh;
+        m_GameObjects[0].transform.translation = { .0f, 0.18f, 0.7f };
+        go = GameObject::CreateGameObject();
+        m_GameObjects.push_back(std::move(go));
+        m_GameObjects[1].model = m_Mesh2;
+        m_GameObjects[1].transform.translation = { -0.2f, 0.18f, 0.6f };
+
+        m_LastMouseX = (float)(m_Platform->GetWindow().GetExtent().width) / 2;
+        m_LastMouseY = (float)(m_Platform->GetWindow().GetExtent().height) / 2;
 
         return true;
     }
@@ -54,16 +70,67 @@ namespace prm
 
     void DemoApplication::HandleInputEvent(const InputEvent& input_event)
     {
+        if (input_event.GetSource() == EventSource::Keyboard)
+        {
+            const auto& key_event = static_cast<const KeyInputEvent&>(input_event);
+
+            if (key_event.GetCode() == KeyCode::W && key_event.GetAction() == KeyAction::Repeat)
+            {
+                m_Camera.ProcessKeyboard(CameraMovement::FORWARD, m_DeltaTime);
+            }
+            if (key_event.GetCode() == KeyCode::S && key_event.GetAction() == KeyAction::Repeat)
+            {
+                m_Camera.ProcessKeyboard(CameraMovement::BACKWARD, m_DeltaTime);
+            }
+            if (key_event.GetCode() == KeyCode::A && key_event.GetAction() == KeyAction::Repeat)
+            {
+                m_Camera.ProcessKeyboard(CameraMovement::LEFT, m_DeltaTime);
+            }
+            if (key_event.GetCode() == KeyCode::D && key_event.GetAction() == KeyAction::Repeat)
+            {
+                m_Camera.ProcessKeyboard(CameraMovement::RIGHT, m_DeltaTime);
+            }
+        }
+
+        if (input_event.GetSource() == EventSource::Mouse)
+        {
+            const auto& mouse_event = static_cast<const MouseButtonInputEvent&>(input_event);
+            if (mouse_event.GetAction() == MouseAction::Move)
+            {
+                const float xpos = mouse_event.GetPosX();
+                const float ypos = mouse_event.GetPosY();
+
+                if (firstMouse)
+                {
+                    m_LastMouseX = xpos;
+                    m_LastMouseY = ypos;
+                    firstMouse = false;
+                }
+
+                const float xoffset = m_LastMouseX - xpos;
+                const float yoffset = m_LastMouseY - ypos;
+
+                m_LastMouseX = xpos;
+                m_LastMouseY = ypos;
+
+                m_Camera.ProcessMouseMovement(xoffset, yoffset);
+            }
+        }
     }
 
     void DemoApplication::Update(float delta_time)
     {
+        m_DeltaTime = delta_time;
+
         if (m_Platform->GetWindow().GetExtent().width == 0 || m_Platform->GetWindow().GetExtent().height == 0)
         {
             return;
         }
 
-        m_Renderer->Draw(*m_Mesh);
+        const float aspect = m_Renderer->GetAspectRatio();
+        m_Camera.SetPerspectiveProjection(glm::radians(50.f), aspect, 0.1f, 100.f);
+
+        m_Renderer->Draw(m_GameObjects, m_Camera);
 
         Application::Update(delta_time);
     }

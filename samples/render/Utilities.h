@@ -1,5 +1,5 @@
 #pragma once
-#include "glm/glm.hpp"
+#include "core/glm_defs.h"
 
 namespace prm
 {
@@ -15,6 +15,13 @@ namespace prm
 
         return static_cast<uint32_t>(value);
     }
+
+    // from: https://stackoverflow.com/a/57595105
+    template <typename T, typename... Rest>
+    void hashCombine(std::size_t& seed, const T& v, const Rest&... rest) {
+        seed ^= std::hash<T>{}(v)+0x9e3779b9 + (seed << 6) + (seed >> 2);
+        (hashCombine(seed, rest), ...);
+    };
 
     struct QueueFamilyIndices
     {
@@ -74,10 +81,14 @@ namespace prm
         std::vector<char> code;
     };
 
-    struct Vertex
+    struct SimplePushConstantData
     {
-        glm::vec3 position;
+        glm::mat4 transform{ 1.0f };
+        glm::mat4 modelMatrix{ 1.0f };
+        //alignas(16) glm::vec3 color{};
     };
+
+    uint32_t FindMemoryTypeIndex(uint32_t allowedTypes, vk::PhysicalDeviceMemoryProperties gpuProperties, vk::MemoryPropertyFlagBits desiredProperties);
 }
 
 

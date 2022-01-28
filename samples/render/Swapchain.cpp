@@ -51,7 +51,11 @@ namespace prm
 
         m_RenderContext.r_Device.destroyRenderPass(m_RenderPass);
 
-        for (const auto& image : m_SwapchainImages)
+        for (const auto& image : m_ColorImages)
+        {
+            m_RenderContext.r_Device.destroyImageView(image.view);
+        }
+        for (const auto& image : m_DepthImages)
         {
             m_RenderContext.r_Device.destroyImageView(image.view);
         }
@@ -122,8 +126,9 @@ namespace prm
             SwapchainImage swapImage;
             swapImage.image = image;
             swapImage.view = CreateImageView(image, m_SwapchainImageFormat, vk::ImageAspectFlagBits::eColor);
-            m_SwapchainImages.push_back(swapImage);
+            m_ColorImages.push_back(swapImage);
         }
+        CreateDepthResources();
 
         CreateRenderPass();
         CreateFrameBuffers();
@@ -141,7 +146,7 @@ namespace prm
         return res;
     }
 
-    vk::Result Swapchain::SubmitCommandBuffers(const vk::CommandBuffer* buffers, uint32_t imageIndex)
+    vk::Result Swapchain::SubmitCommandBuffers(const vk::CommandBuffer buffers, uint32_t imageIndex)
     {
         if (m_ImagesInFlightFences[imageIndex])
         {
@@ -158,7 +163,7 @@ namespace prm
         submitInfo.pWaitDstStageMask = waitStages;
 
         submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = buffers;
+        submitInfo.pCommandBuffers = &buffers;
 
         vk::Semaphore signalSemaphores[] = { m_RenderFinishedSemaphores[m_CurrentFrame] };
         submitInfo.signalSemaphoreCount = 1;
@@ -185,19 +190,19 @@ namespace prm
     }
 
     void Swapchain::CreateRenderPass() {
-        /*VkAttachmentDescription depthAttachment{};
-        depthAttachment.format = findDepthFormat();
-        depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-        depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-        depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;*/
+        vk::AttachmentDescription depthAttachment{};
+        depthAttachment.format = FindDepthFormat();
+        depthAttachment.samples = vk::SampleCountFlagBits::e1;
+        depthAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+        depthAttachment.storeOp = vk::AttachmentStoreOp::eDontCare;
+        depthAttachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
+        depthAttachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
+        depthAttachment.initialLayout = vk::ImageLayout::eUndefined;
+        depthAttachment.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
 
-       /* VkAttachmentReference depthAttachmentRef{};
+        vk::AttachmentReference depthAttachmentRef{};
         depthAttachmentRef.attachment = 1;
-        depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;*/
+        depthAttachmentRef.layout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
 
         vk::AttachmentDescription colorAttachment;
         colorAttachment.format = m_SwapchainImageFormat;
@@ -217,19 +222,19 @@ namespace prm
         subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
         subpass.colorAttachmentCount = 1;
         subpass.pColorAttachments = &colorAttachmentRef;
-        //subpass.pDepthStencilAttachment = &depthAttachmentRef;
+        subpass.pDepthStencilAttachment = &depthAttachmentRef;
 
         vk::SubpassDependency dependency;
         dependency.dstSubpass = 0;
-        dependency.dstAccessMask = vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite;
+        dependency.dstAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentWrite | vk::AccessFlagBits::eColorAttachmentWrite;
         dependency.dstStageMask =
             vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests;
         dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-        dependency.srcAccessMask = vk::AccessFlagBits::eMemoryRead;
+        //dependency.srcAccessMask = vk::AccessFlagBits::eMemoryRead;
         dependency.srcStageMask =
             vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests;
 
-        std::array<vk::AttachmentDescription, 1> attachments = { colorAttachment };
+        std::array<vk::AttachmentDescription, 2> attachments = { colorAttachment, depthAttachment };
         vk::RenderPassCreateInfo renderPassInfo;
         renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
         renderPassInfo.pAttachments = attachments.data();
@@ -243,12 +248,13 @@ namespace prm
 
     void Swapchain::CreateFrameBuffers()
     {
-        m_FrameBuffers.resize(m_SwapchainImages.size());
+        m_FrameBuffers.resize(m_ColorImages.size());
 
         for (size_t i = 0; i < m_FrameBuffers.size(); ++i)
         {
-            std::array<vk::ImageView, 1> attachments{
-                m_SwapchainImages[i].view
+            std::array<vk::ImageView, 2> attachments{
+                m_ColorImages[i].view,
+                m_DepthImages[i].view
             };
 
             vk::FramebufferCreateInfo info;
@@ -408,6 +414,85 @@ namespace prm
             VK_CHECK(m_RenderContext.r_Device.createSemaphore(&semaphoreInfo, nullptr, &m_ImageAvailableSemaphores[i]));
             VK_CHECK(m_RenderContext.r_Device.createSemaphore(&semaphoreInfo, nullptr, &m_RenderFinishedSemaphores[i]));
             VK_CHECK(m_RenderContext.r_Device.createFence(&fenceInfo, nullptr, &m_InFlightFences[i]));
+        }
+    }
+
+    vk::Format Swapchain::FindDepthFormat() const
+    {
+        const std::vector<vk::Format> candidates = { vk::Format::eD32Sfloat, vk::Format::eD32SfloatS8Uint, vk::Format::eD24UnormS8Uint };
+        const vk::ImageTiling tiling = vk::ImageTiling::eOptimal;
+        const vk::FormatFeatureFlags features = vk::FormatFeatureFlagBits::eDepthStencilAttachment;
+
+        for (vk::Format format : candidates) 
+        {
+            vk::FormatProperties props;
+            m_RenderContext.r_GPU.getFormatProperties(format, &props);
+
+            if (tiling == vk::ImageTiling::eOptimal && (props.linearTilingFeatures & features) == features) 
+            {
+                return format;
+            }
+            else if (tiling == vk::ImageTiling::eOptimal && (props.optimalTilingFeatures & features) == features) 
+            {
+                return format;
+            }
+        }
+
+        throw std::runtime_error("Failed to find supported format!");
+    }
+
+    void Swapchain::CreateDepthResources()
+    {
+        const vk::Format depthFormat = FindDepthFormat();
+        m_DepthFormat = depthFormat;
+        const vk::Extent2D swapChainExtent = GetExtent();
+
+        const auto imageCount = GetImagesCount();
+        m_DepthImages.resize(imageCount);
+        m_DepthImageMemorys.resize(imageCount);
+        m_DepthImages.resize(imageCount);
+
+        for (size_t i = 0; i < m_DepthImages.size(); i++) 
+        {
+            vk::ImageCreateInfo imageInfo{};
+            imageInfo.imageType = vk::ImageType::e2D;
+            imageInfo.extent.width = swapChainExtent.width;
+            imageInfo.extent.height = swapChainExtent.height;
+            imageInfo.extent.depth = 1;
+            imageInfo.mipLevels = 1;
+            imageInfo.arrayLayers = 1;
+            imageInfo.format = depthFormat;
+            imageInfo.tiling = vk::ImageTiling::eOptimal;
+            imageInfo.initialLayout = vk::ImageLayout::eUndefined;
+            imageInfo.usage = vk::ImageUsageFlagBits::eDepthStencilAttachment;
+            imageInfo.samples = vk::SampleCountFlagBits::e1;
+            imageInfo.sharingMode = vk::SharingMode::eExclusive;
+
+            VK_CHECK(m_RenderContext.r_Device.createImage(&imageInfo, nullptr, &m_DepthImages[i].image));
+
+            vk::MemoryRequirements memRequirements;
+            m_RenderContext.r_Device.getImageMemoryRequirements(m_DepthImages[i].image, &memRequirements);
+
+            vk::MemoryAllocateInfo allocInfo{};
+            allocInfo.allocationSize = memRequirements.size;
+            allocInfo.memoryTypeIndex = FindMemoryTypeIndex(memRequirements.memoryTypeBits,
+                m_RenderContext.r_GPU.getMemoryProperties(), vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+            VK_CHECK(m_RenderContext.r_Device.allocateMemory(&allocInfo, nullptr, &m_DepthImageMemorys[i]));
+
+            m_RenderContext.r_Device.bindImageMemory(m_DepthImages[i].image, m_DepthImageMemorys[i], 0);
+
+            vk::ImageViewCreateInfo viewInfo{};
+            viewInfo.image = m_DepthImages[i].image;
+            viewInfo.viewType = vk::ImageViewType::e2D;
+            viewInfo.format = depthFormat;
+            viewInfo.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eDepth;
+            viewInfo.subresourceRange.baseMipLevel = 0;
+            viewInfo.subresourceRange.levelCount = 1;
+            viewInfo.subresourceRange.baseArrayLayer = 0;
+            viewInfo.subresourceRange.layerCount = 1;
+
+            VK_CHECK(m_RenderContext.r_Device.createImageView(&viewInfo, nullptr, &m_DepthImages[i].view));
         }
     }
 
