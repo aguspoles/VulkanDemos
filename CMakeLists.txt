@@ -1,6 +1,6 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
 
-project(VulkanDemos)
+project(VulkanDemos LANGUAGES C CXX)
 
 # Add path for local cmake scripts
 list(APPEND CMAKE_MODULE_PATH

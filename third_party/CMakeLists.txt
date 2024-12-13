@@ -1,6 +1,6 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
 
-project(third_party LANGUAGES C)
+project(third_party LANGUAGES C CXX)
 
 #tinyobj
 add_library(tinyobj INTERFACE)
@@ -60,15 +60,31 @@ elseif(UNIX)
 endif() 
 
 # GLFW
-option(GLFW_BUILD_DOCS OFF)
-option(GLFW_BUILD_TESTS OFF)
-option(GLFW_BUILD_EXAMPLES OFF)
-option(GLFW_BUILD_TESTS OFF)
-option(GLFW_INSTALL OFF)
-if (VKB_WSI_SELECTION STREQUAL WAYLAND)
-    set(GLFW_USE_WAYLAND ON)
+ if (NOT DIRECT_TO_DISPLAY)
+	option(GLFW_BUILD_DOCS OFF)
+	option(GLFW_BUILD_TESTS OFF)
+	option(GLFW_BUILD_EXAMPLES OFF)
+	option(GLFW_BUILD_TESTS OFF)
+	option(GLFW_INSTALL OFF)
+	option(BUILD_SHARED_LIBS ON)
+	if (VKB_WSI_SELECTION STREQUAL WAYLAND)
+		set(GLFW_USE_WAYLAND ON)
+	endif()
+	
+	add_subdirectory(glfw)
+
+	if (TARGET update_mappings)
+        set_target_properties(update_mappings PROPERTIES FOLDER "ThirdParty")
+    endif()
+    set_property(TARGET glfw PROPERTY FOLDER "ThirdParty")
 endif()
 
-add_subdirectory(glfw)
+# fmt
+add_subdirectory(fmt)
+set_property(TARGET fmt PROPERTY FOLDER "ThirdParty")
 
+# SPDLOG
+set(SPDLOG_FMT_EXTERNAL ON)
 add_subdirectory(spdlog)
+set_property(TARGET spdlog PROPERTY FOLDER "ThirdParty")
+
