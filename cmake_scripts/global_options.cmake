@@ -22,3 +22,6 @@ add_definitions(-DROOT_PATH_SIZE=${ROOT_PATH_SIZE})
 
 set(CMAKE_C_FLAGS_DEBUG   "-DDEBUG=0 ${CMAKE_C_FLAGS_DEBUG}")
 set(CMAKE_CXX_FLAGS_DEBUG "-DDEBUG=0 ${CMAKE_CXX_FLAGS_DEBUG}")
+
+#Need this for spdlog warnings that are treated as errors
+add_compile_definitions(_SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS)

@@ -80,11 +80,18 @@ endif()
 endif()
 
 # fmt
-add_subdirectory(fmt)
-set_property(TARGET fmt PROPERTY FOLDER "ThirdParty")
+#add_subdirectory(fmt)
+#set_property(TARGET fmt PROPERTY FOLDER "ThirdParty")
 
 # SPDLOG
-set(SPDLOG_FMT_EXTERNAL ON)
-add_subdirectory(spdlog)
-set_property(TARGET spdlog PROPERTY FOLDER "ThirdParty")
+#set(SPDLOG_FMT_EXTERNAL ON)
+#add_subdirectory(spdlog)
+#set_property(TARGET spdlog PROPERTY FOLDER "ThirdParty")
+
+##Remove when fixing spdlog fmt dependency issue
+add_library(spdlog INTERFACE)
+set(SPDLOG_DIR ${CMAKE_CURRENT_SOURCE_DIR}/spdlog)
+target_include_directories(spdlog INTERFACE ${SPDLOG_DIR}/include)
+target_sources(spdlog INTERFACE ${SPDLOG_DIR}/src)
+##
 
