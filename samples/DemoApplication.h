@@ -31,6 +31,8 @@ namespace prm
         std::shared_ptr<Mesh> m_Mesh2;
         std::vector<GameObject> m_GameObjects;
         Camera m_Camera;
+        CameraMovement m_CurrentCameraMovement;
+        bool m_ShouldMoveCamera;
 
         float m_DeltaTime;
 

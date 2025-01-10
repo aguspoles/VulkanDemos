@@ -40,7 +40,7 @@ namespace prm {
         m_ProjectionMatrix[3][2] = -(far_plane * near_plane) / (far_plane - near_plane);
     }
 
-    void Camera::ProcessKeyboard(CameraMovement direction, float deltaTime)
+    void Camera::Move(CameraMovement direction, float deltaTime)
     {
         float velocity = MovementSpeed * deltaTime;
         if (direction == FORWARD)

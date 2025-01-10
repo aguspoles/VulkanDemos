@@ -17,7 +17,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
     auto* app = new prm::DemoApplication();
 
-    auto code = platform.Initialize(app);
+    prm::ExitCode code = platform.Initialize(app);
 
     if (code == prm::ExitCode::Success)
     {

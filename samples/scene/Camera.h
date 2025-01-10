@@ -51,7 +51,7 @@ namespace prm {
         glm::mat4 GetViewMatrix() const { return glm::lookAt(Position, Position + Front, Up); }
 
         // processes input received from any keyboard-like input system. Accepts input parameter in the form of camera defined ENUM (to abstract it from windowing systems)
-        void ProcessKeyboard(CameraMovement direction, float deltaTime);
+        void Move(CameraMovement direction, float deltaTime);
 
         // processes input received from a mouse input system. Expects the offset value in both the x and y direction.
         void ProcessMouseMovement(float xoffset, float yoffset, bool constrainPitch = true);
