@@ -15,19 +15,6 @@ namespace prm {
         UpdateCameraVectors();
     }
 
-    Camera::Camera(float posX, float posY, float posZ, float upX, float upY, float upZ, float yaw, float pitch)
-        : Front(glm::vec3(0.0f, 0.0f, 1.0f))
-        , MovementSpeed(SPEED)
-        , MouseSensitivity(SENSITIVITY)
-        , Zoom(ZOOM)
-    {
-        Position = glm::vec3(posX, posY, posZ);
-        WorldUp = glm::vec3(upX, upY, upZ);
-        Yaw = yaw;
-        Pitch = pitch;
-        UpdateCameraVectors();
-    }
-
     void Camera::SetPerspectiveProjection(float fovy, float aspect, float near_plane, float far_plane)
     {
         assert(glm::abs(aspect - std::numeric_limits<float>::epsilon()) > 0.0f);
@@ -39,9 +26,11 @@ namespace prm {
         m_ProjectionMatrix[2][2] = far_plane / (far_plane - near_plane);
         m_ProjectionMatrix[2][3] = 1.f;
         m_ProjectionMatrix[3][2] = -(far_plane * near_plane) / (far_plane - near_plane);
+    }
 
-        //-Z into the screen
-        //m_ProjectionMatrix = glm::perspective(fovy, aspect, near_plane, far_plane);
+    glm::mat4 Camera::GetViewMatrix() const
+    {
+        return glm::lookAt(Position, Position + Front, Up);
     }
 
     void Camera::Move(CameraMovement direction, float deltaTime)

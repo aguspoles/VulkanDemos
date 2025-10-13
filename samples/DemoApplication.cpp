@@ -22,7 +22,6 @@ namespace prm
         m_Renderer->GetRenderContext().r_Device.waitIdle();
         m_GameObjects.clear();
         m_Mesh.reset();
-        m_Mesh2.reset();
         m_Renderer.reset();
     }
 
@@ -40,7 +39,6 @@ namespace prm
         const auto& context = m_Renderer->GetRenderContext();
 
         m_Mesh = Mesh::CreateModelFromFile(context.r_GPU, context.r_Device, m_Renderer->GetCommandPool(), "assets/meshes/teapot.obj");
-        //m_Mesh2 = Mesh::CreateModelFromFile(context.r_GPU, context.r_Device, m_Renderer->GetCommandPool(), "output/smooth_vase.obj");
 
         auto go = GameObject::CreateGameObject();
         m_GameObjects.push_back(std::move(go));
@@ -48,11 +46,6 @@ namespace prm
         m_GameObjects[0].transform.translation = { 0.f, 1.5f, 10.f };
         m_GameObjects[0].transform.scale = { 0.1f, 0.1f, 0.1f };
         m_GameObjects[0].transform.rotation = { 0, glm::radians(0.f), 0 };
-        //m_GameObjects[0].transform.rotation = { glm::radians(0.f), 0, glm::radians(180.f) };
-        /*go = GameObject::CreateGameObject();
-        m_GameObjects.push_back(std::move(go));
-        m_GameObjects[1].model = m_Mesh2;
-        m_GameObjects[1].transform.translation = { -0.2f, 0.18f, 0.6f };*/
 
         m_LastMouseX = (float)(m_Platform->GetWindow().GetExtent().width) / 2;
         m_LastMouseY = (float)(m_Platform->GetWindow().GetExtent().height) / 2;
@@ -137,6 +130,7 @@ namespace prm
 
         const float aspect = m_Renderer->GetAspectRatio();
         m_Camera.SetPerspectiveProjection(glm::radians(50.f), aspect, 0.1f, 100.f);
+
         if (m_ShouldMoveCamera)
         {
             m_Camera.Move(m_CurrentCameraMovement, m_DeltaTime);

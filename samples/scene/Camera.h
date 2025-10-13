@@ -19,7 +19,7 @@ namespace prm {
     const float ZOOM = 45.0f;
 
 
-    // An abstract camera class that processes input and calculates the corresponding Euler Angles, Vectors and Matrices for use in OpenGL
+    // An abstract camera class that processes input and calculates the corresponding Euler Angles, Vectors and Matrices for Vulkan coordinate system(+Y down, +Z into screen, +X right)
     class Camera
     {
     public:
@@ -39,16 +39,13 @@ namespace prm {
 
         // constructor with vectors
         Camera(glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3 up = glm::vec3(0.0f, -1.0f, 0.0f), float yaw = YAW, float pitch = PITCH);
-        
-        // constructor with scalar values
-        Camera(float posX, float posY, float posZ, float upX, float upY, float upZ, float yaw, float pitch);
 
         void SetPerspectiveProjection(float fovy, float aspect, float near_plane, float far_plane);
 
         glm::mat4 GetProjectionMatrix() const { return m_ProjectionMatrix; }
 
         // returns the view matrix calculated using Euler Angles and the LookAt Matrix
-        glm::mat4 GetViewMatrix() const { return glm::lookAt(Position, Position + Front, Up); }
+        glm::mat4 GetViewMatrix() const;
 
         // processes input received from any keyboard-like input system. Accepts input parameter in the form of camera defined ENUM (to abstract it from windowing systems)
         void Move(CameraMovement direction, float deltaTime);

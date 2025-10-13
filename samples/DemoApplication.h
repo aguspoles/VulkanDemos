@@ -28,7 +28,6 @@ namespace prm
     private:
         std::unique_ptr<VulkanRenderer> m_Renderer;
         std::shared_ptr<Mesh> m_Mesh;
-        std::shared_ptr<Mesh> m_Mesh2;
         std::vector<GameObject> m_GameObjects;
         Camera m_Camera;
         CameraMovement m_CurrentCameraMovement;
