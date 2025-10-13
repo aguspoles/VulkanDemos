@@ -32,8 +32,8 @@ namespace prm
 
         m_Renderer = std::make_unique<VulkanRenderer>(*m_Platform);
 
-        m_Renderer->SetVertexShader("output/triangle_vert.spv");
-        m_Renderer->SetFragmentShader("output/triangle_frag.spv");
+        m_Renderer->SetVertexShader("output/diffuse_vert.spv");
+        m_Renderer->SetFragmentShader("output/diffuse_frag.spv");
 
         m_Renderer->Init();
 
@@ -45,9 +45,10 @@ namespace prm
         auto go = GameObject::CreateGameObject();
         m_GameObjects.push_back(std::move(go));
         m_GameObjects[0].model = m_Mesh;
-        m_GameObjects[0].transform.translation = { 0.f, 0.1f, 0.7f };
+        m_GameObjects[0].transform.translation = { 0.f, 1.5f, 10.f };
         m_GameObjects[0].transform.scale = { 0.1f, 0.1f, 0.1f };
-        m_GameObjects[0].transform.rotation = { glm::radians(180.f), 0.f, 0.f };
+        m_GameObjects[0].transform.rotation = { 0, glm::radians(0.f), 0 };
+        //m_GameObjects[0].transform.rotation = { glm::radians(0.f), 0, glm::radians(180.f) };
         /*go = GameObject::CreateGameObject();
         m_GameObjects.push_back(std::move(go));
         m_GameObjects[1].model = m_Mesh2;

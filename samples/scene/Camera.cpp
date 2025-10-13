@@ -31,6 +31,7 @@ namespace prm {
     void Camera::SetPerspectiveProjection(float fovy, float aspect, float near_plane, float far_plane)
     {
         assert(glm::abs(aspect - std::numeric_limits<float>::epsilon()) > 0.0f);
+
         const float tanHalfFovy = tan(fovy / 2.f);
         m_ProjectionMatrix = glm::mat4{ 0.0f };
         m_ProjectionMatrix[0][0] = 1.f / (aspect * tanHalfFovy);
@@ -38,6 +39,9 @@ namespace prm {
         m_ProjectionMatrix[2][2] = far_plane / (far_plane - near_plane);
         m_ProjectionMatrix[2][3] = 1.f;
         m_ProjectionMatrix[3][2] = -(far_plane * near_plane) / (far_plane - near_plane);
+
+        //-Z into the screen
+        //m_ProjectionMatrix = glm::perspective(fovy, aspect, near_plane, far_plane);
     }
 
     void Camera::Move(CameraMovement direction, float deltaTime)

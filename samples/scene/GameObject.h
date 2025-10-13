@@ -10,12 +10,20 @@ namespace prm {
         glm::vec3 scale{ 1.f, 1.f, 1.f };
         glm::vec3 rotation{};
 
+        // 
         // Matrix corrsponds to Translate * Ry * Rx * Rz * Scale
         // Rotations correspond to Tait-bryan angles of Y(1), X(2), Z(3)
         // https://en.wikipedia.org/wiki/Euler_angles#Rotation_matrix
         glm::mat4 mat4() const
         {
-            const float c3 = glm::cos(rotation.z);
+            glm::mat4 modelToWorldTransformMatrix;
+            modelToWorldTransformMatrix = glm::scale(modelToWorldTransformMatrix, scale);
+            modelToWorldTransformMatrix = glm::rotate(modelToWorldTransformMatrix, rotation.x, { 1,0,0 });
+            modelToWorldTransformMatrix = glm::rotate(modelToWorldTransformMatrix, rotation.y, { 0,1,0 });
+            modelToWorldTransformMatrix = glm::rotate(modelToWorldTransformMatrix, rotation.z, { 0,0,1 });
+            modelToWorldTransformMatrix = glm::translate(modelToWorldTransformMatrix, translation);
+            return modelToWorldTransformMatrix;
+            /*const float c3 = glm::cos(rotation.z);
             const float s3 = glm::sin(rotation.z);
             const float c2 = glm::cos(rotation.x);
             const float s2 = glm::sin(rotation.x);
@@ -40,7 +48,7 @@ namespace prm {
                     scale.z * (c1 * c2),
                     0.0f,
                 },
-                {translation.x, translation.y, translation.z, 1.0f} };
+                {translation.x, translation.y, translation.z, 1.0f} };*/
         }
     };
 
