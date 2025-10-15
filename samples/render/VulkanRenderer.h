@@ -12,6 +12,7 @@ namespace prm
     class Mesh;
     class GameObject;
     class Camera;
+    class Buffer;
 
     class VulkanRenderer
     {
@@ -35,11 +36,8 @@ namespace prm
         void SetFragmentShader(const std::string& filePath) { m_FragmentShaderPath = filePath; }
 
         const RenderContext& GetRenderContext() const { return m_RenderContext; }
+        RenderContext& GetRenderContext() { return m_RenderContext; }
         CommandPool& GetCommandPool() { return *m_GraphicsCommandPool; }
-
-        //Requester of buffer must free buffer
-        void CreateBuffer(vk::Buffer& buffer, vk::DeviceSize bufferSize, vk::DeviceMemory& bufferMemory, vk::BufferUsageFlags usage);
-        void SubmitDataToBuffer(vk::DeviceSize bufferSize, vk::Buffer buffer, void* srcData) const;
 
         float GetAspectRatio() const;
 
@@ -66,8 +64,7 @@ namespace prm
         std::string m_VertexShaderPath;
         std::string m_FragmentShaderPath;
 
-        vk::Buffer m_MVPMatrixUniformBuffer;
-        vk::DeviceMemory m_MVPMatrixDeviceMemory;
+        std::shared_ptr<Buffer> m_ShaderUniformBuffer;
 
 #if defined(VKB_DEBUG)
         DebugInfo m_DebugInfo;

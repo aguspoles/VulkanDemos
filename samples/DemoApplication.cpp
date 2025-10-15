@@ -36,9 +36,9 @@ namespace prm
 
         m_Renderer->Init();
 
-        const auto& context = m_Renderer->GetRenderContext();
+        RenderContext& context = m_Renderer->GetRenderContext();
 
-        m_Mesh = Mesh::CreateModelFromFile(context.r_GPU, context.r_Device, m_Renderer->GetCommandPool(), "assets/meshes/teapot.obj");
+        m_Mesh = Mesh::CreateModelFromFile(context, m_Renderer->GetCommandPool(), "assets/meshes/teapot.obj");
 
         auto go = GameObject::CreateGameObject();
         m_GameObjects.push_back(std::move(go));

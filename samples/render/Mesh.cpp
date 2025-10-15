@@ -8,6 +8,7 @@
 #include "core/glm_defs.h"
 #include "core/Error.h"
 #include "render/CommandPool.h"
+#include "render/Buffer.h"
 
 namespace std {
     template <>
@@ -24,122 +25,53 @@ namespace std {
 
 namespace prm {
 
-    Mesh::Mesh(vk::PhysicalDevice gpu, vk::Device device, CommandPool& commandPool, const Mesh::Builder& builder)
-        : m_Device{ device }
-        , m_GPU(gpu)
+    Mesh::Mesh(RenderContext& renderContext, CommandPool& commandPool, const Mesh::Builder& builder)
+        : m_RenderContext{ renderContext }
         , m_CommandPool(commandPool)
     {
-        CreateVertexBuffers(builder.vertices);
-        CreateIndexBuffers(builder.indices);
+        CreateVertexBuffer(builder.vertices);
+        CreateIndexBuffer(builder.indices);
     }
 
-    Mesh::Mesh(vk::PhysicalDevice gpu, vk::Device device, CommandPool& commandPool,
+    Mesh::Mesh(RenderContext& renderContext, CommandPool& commandPool,
         const std::vector<Vertex>& vertices)
-            : m_Device{ device }
-            , m_GPU(gpu)
+            : m_RenderContext{ renderContext }
             , m_CommandPool(commandPool)
     {
-        CreateVertexBuffers(vertices);
+        CreateVertexBuffer(vertices);
     }
 
     Mesh::~Mesh()
     {
-        m_Device.destroyBuffer(m_VertexBuffer);
-        m_Device.freeMemory(m_VertexBufferMemory);
+        m_VertexBuffer.reset();
 
         if (m_HasIndexBuffer) 
         {
-            m_Device.destroyBuffer(m_IndexBuffer);
-            m_Device.freeMemory(m_IndexBufferMemory);
+            m_IndexBuffer.reset();
         }
     }
 
     std::shared_ptr<Mesh> Mesh::CreateModelFromFile(
-        vk::PhysicalDevice gpu, vk::Device device, CommandPool& commandPool, const std::string& filepath)
+        RenderContext& renderContext, CommandPool& commandPool, const std::string& filepath)
     {
         Builder builder{};
         builder.loadModel(filepath);
         LOGI("Loaded model with {} vertices and {} indices", builder.vertices.size(), builder.indices.size());
-        return std::make_shared<Mesh>(gpu, device, commandPool, builder);
+        return std::make_shared<Mesh>(renderContext, commandPool, builder);
     }
 
-    void Mesh::CreateVertexBuffers(const std::vector<Vertex>& vertices)
+    void Mesh::CreateVertexBuffer(const std::vector<Vertex>& vertices)
     {
         m_VertexCount = static_cast<uint32_t>(vertices.size());
         assert(m_VertexCount >= 3 && "Vertex count must be at least 3");
         vk::DeviceSize bufferSize = sizeof(vertices[0]) * m_VertexCount;
 
-        //Staging buffer set up
-        vk::Buffer stagingBuffer;
-        vk::DeviceMemory stagingBufferMemory;
+        m_VertexBuffer = Buffer::CreateBuffer(m_RenderContext, bufferSize, vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst);
 
-        vk::BufferCreateInfo bufferInfo;
-        bufferInfo.size = bufferSize;
-        bufferInfo.usage = vk::BufferUsageFlagBits::eTransferSrc;
-        bufferInfo.sharingMode = vk::SharingMode::eExclusive;
-
-        VK_CHECK(m_Device.createBuffer(&bufferInfo, nullptr, &stagingBuffer));
-
-        vk::MemoryRequirements memRequirements;
-        m_Device.getBufferMemoryRequirements(stagingBuffer, &memRequirements);
-
-        auto hostVisible = vk::MemoryPropertyFlagBits::eHostVisible;
-        auto coherent = vk::MemoryPropertyFlagBits::eHostCoherent;
-        auto mask = static_cast<vk::MemoryPropertyFlagBits> (
-            static_cast<std::underlying_type_t<vk::MemoryPropertyFlagBits>>(hostVisible) |
-            static_cast<std::underlying_type_t<vk::MemoryPropertyFlagBits>>(coherent)
-            );
-
-        vk::MemoryAllocateInfo allocInfo{};
-        allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = FindMemoryTypeIndex(memRequirements.memoryTypeBits, m_GPU.getMemoryProperties(), mask);
-
-        VK_CHECK(m_Device.allocateMemory(&allocInfo, nullptr, &stagingBufferMemory));
-
-        m_Device.bindBufferMemory(stagingBuffer, stagingBufferMemory, 0);
-
-        void* data;
-        VK_CHECK(m_Device.mapMemory(stagingBufferMemory, 0, bufferSize, {}, &data));
-        memcpy(data, vertices.data(), static_cast<size_t>(bufferSize));
-        m_Device.unmapMemory(stagingBufferMemory);
-
-        //Vertex buffer set up
-
-        vk::BufferCreateInfo vertexBufferInfo;
-        vertexBufferInfo.size = bufferSize;
-        vertexBufferInfo.usage = vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst;
-        vertexBufferInfo.sharingMode = vk::SharingMode::eExclusive;
-
-        VK_CHECK(m_Device.createBuffer(&vertexBufferInfo, nullptr, &m_VertexBuffer));
-
-        vk::MemoryRequirements vertexMemRequirements;
-        m_Device.getBufferMemoryRequirements(m_VertexBuffer, &vertexMemRequirements);
-
-        vk::MemoryAllocateInfo vertexAllocInfo{};
-        vertexAllocInfo.allocationSize = vertexMemRequirements.size;
-        vertexAllocInfo.memoryTypeIndex = FindMemoryTypeIndex(vertexMemRequirements.memoryTypeBits, m_GPU.getMemoryProperties(), vk::MemoryPropertyFlagBits::eDeviceLocal);
-
-        VK_CHECK(m_Device.allocateMemory(&vertexAllocInfo, nullptr, &m_VertexBufferMemory));
-
-        m_Device.bindBufferMemory(m_VertexBuffer, m_VertexBufferMemory, 0);
-
-        //Copy data between buffers
-        vk::CommandBuffer commandBuffer = m_CommandPool.BeginOneTimeSubmitCommand();
-
-        vk::BufferCopy copyRegion{};
-        copyRegion.srcOffset = 0;  // Optional
-        copyRegion.dstOffset = 0;  // Optional
-        copyRegion.size = bufferSize;
-        commandBuffer.copyBuffer(stagingBuffer, m_VertexBuffer, 1, &copyRegion);
-
-        m_CommandPool.EndOneTimeSubmitCommand(commandBuffer);
-
-        //Finally we can destroy the staging buffer
-        m_Device.destroyBuffer(stagingBuffer);
-        m_Device.freeMemory(stagingBufferMemory);
+        m_VertexBuffer->UpdateDeviceData(static_cast<const void*>(vertices.data()), m_CommandPool);
     }
 
-    void Mesh::CreateIndexBuffers(const std::vector<uint32_t>& indices)
+    void Mesh::CreateIndexBuffer(const std::vector<uint32_t>& indices)
     {
         m_IndexCount = static_cast<uint32_t>(indices.size());
         m_HasIndexBuffer = m_IndexCount > 0;
@@ -148,76 +80,11 @@ namespace prm {
             return;
         }
 
-        vk::DeviceSize bufferSize = sizeof(indices[0]) * m_IndexCount;
+        const vk::DeviceSize bufferSize = sizeof(indices[0]) * m_IndexCount;
 
-        //Staging buffer set up
-        vk::Buffer stagingBuffer;
-        vk::DeviceMemory stagingBufferMemory;
+        m_IndexBuffer = Buffer::CreateBuffer(m_RenderContext, bufferSize, vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst);
 
-        vk::BufferCreateInfo bufferInfo;
-        bufferInfo.size = bufferSize;
-        bufferInfo.usage = vk::BufferUsageFlagBits::eTransferSrc;
-        bufferInfo.sharingMode = vk::SharingMode::eExclusive;
-
-        VK_CHECK(m_Device.createBuffer(&bufferInfo, nullptr, &stagingBuffer));
-
-        vk::MemoryRequirements memRequirements;
-        m_Device.getBufferMemoryRequirements(stagingBuffer, &memRequirements);
-
-        auto hostVisible = vk::MemoryPropertyFlagBits::eHostVisible;
-        auto coherent = vk::MemoryPropertyFlagBits::eHostCoherent;
-        auto mask = static_cast<vk::MemoryPropertyFlagBits> (
-            static_cast<std::underlying_type_t<vk::MemoryPropertyFlagBits>>(hostVisible) |
-            static_cast<std::underlying_type_t<vk::MemoryPropertyFlagBits>>(coherent)
-            );
-
-        vk::MemoryAllocateInfo allocInfo{};
-        allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = FindMemoryTypeIndex(memRequirements.memoryTypeBits, m_GPU.getMemoryProperties(), mask);
-
-        VK_CHECK(m_Device.allocateMemory(&allocInfo, nullptr, &stagingBufferMemory));
-
-        m_Device.bindBufferMemory(stagingBuffer, stagingBufferMemory, 0);
-
-        void* data;
-        VK_CHECK(m_Device.mapMemory(stagingBufferMemory, 0, bufferSize, {}, &data));
-        memcpy(data, indices.data(), static_cast<size_t>(bufferSize));
-        m_Device.unmapMemory(stagingBufferMemory);
-
-        //Index buffer set up
-
-        vk::BufferCreateInfo indexBufferInfo;
-        indexBufferInfo.size = bufferSize;
-        indexBufferInfo.usage = vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst;
-        indexBufferInfo.sharingMode = vk::SharingMode::eExclusive;
-
-        VK_CHECK(m_Device.createBuffer(&indexBufferInfo, nullptr, &m_IndexBuffer));
-
-        vk::MemoryRequirements indexMemRequirements;
-        m_Device.getBufferMemoryRequirements(m_IndexBuffer, &indexMemRequirements);
-
-        vk::MemoryAllocateInfo indexAllocInfo{};
-        indexAllocInfo.allocationSize = indexMemRequirements.size;
-        indexAllocInfo.memoryTypeIndex = FindMemoryTypeIndex(indexMemRequirements.memoryTypeBits, m_GPU.getMemoryProperties(), vk::MemoryPropertyFlagBits::eDeviceLocal);
-
-        VK_CHECK(m_Device.allocateMemory(&indexAllocInfo, nullptr, &m_IndexBufferMemory));
-
-        m_Device.bindBufferMemory(m_IndexBuffer, m_IndexBufferMemory, 0);
-
-        //Copy data between buffers
-        vk::CommandBuffer commandBuffer = m_CommandPool.BeginOneTimeSubmitCommand();
-
-        vk::BufferCopy copyRegion{};
-        copyRegion.srcOffset = 0;  // Optional
-        copyRegion.dstOffset = 0;  // Optional
-        copyRegion.size = bufferSize;
-        commandBuffer.copyBuffer(stagingBuffer, m_IndexBuffer, 1, &copyRegion);
-
-        m_CommandPool.EndOneTimeSubmitCommand(commandBuffer);
-
-        //Finally we can destroy the staging buffer
-        m_Device.destroyBuffer(stagingBuffer);
-        m_Device.freeMemory(stagingBufferMemory);
+        m_IndexBuffer->UpdateDeviceData(static_cast<const void*>(indices.data()), m_CommandPool);
     }
 
     void Mesh::Draw(vk::CommandBuffer commandBuffer) const
@@ -234,13 +101,13 @@ namespace prm {
 
     void Mesh::Bind(vk::CommandBuffer commandBuffer) const
     {
-        vk::Buffer buffers[] = { m_VertexBuffer };
+        vk::Buffer buffers[] = { m_VertexBuffer->GetDeviceBuffer()};
         vk::DeviceSize offsets[] = { 0 };
         commandBuffer.bindVertexBuffers(0, 1, buffers, offsets);
 
         if (m_HasIndexBuffer) 
         {
-            commandBuffer.bindIndexBuffer(m_IndexBuffer, 0, vk::IndexType::eUint32);
+            commandBuffer.bindIndexBuffer(m_IndexBuffer->GetDeviceBuffer(), 0, vk::IndexType::eUint32);
         }
     }
 

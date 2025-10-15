@@ -3,6 +3,8 @@
 
 namespace prm {
     class CommandPool;
+    class Buffer;
+    struct RenderContext;
 
     class Mesh {
     public:
@@ -31,34 +33,31 @@ namespace prm {
             void loadModel(const std::string& filepath);
         };
 
-        Mesh(vk::PhysicalDevice gpu, vk::Device device, CommandPool& commandPool, const Mesh::Builder& builder);
-        Mesh(vk::PhysicalDevice gpu, vk::Device device, CommandPool& commandPool, const std::vector<Vertex>& vertices);
+        Mesh(RenderContext& renderContext, CommandPool& commandPool, const Mesh::Builder& builder);
+        Mesh(RenderContext& renderContext, CommandPool& commandPool, const std::vector<Vertex>& vertices);
         ~Mesh();
 
         Mesh(const Mesh&) = delete;
         Mesh& operator=(const Mesh&) = delete;
 
         static std::shared_ptr<Mesh> CreateModelFromFile(
-            vk::PhysicalDevice gpu, vk::Device device, CommandPool& commandPool, const std::string& filepath);
+            RenderContext& renderContext, CommandPool& commandPool, const std::string& filepath);
 
         void Bind(vk::CommandBuffer commandBuffer) const;
         void Draw(vk::CommandBuffer commandBuffer) const;
 
     private:
-        void CreateVertexBuffers(const std::vector<Vertex>& vertices);
-        void CreateIndexBuffers(const std::vector<uint32_t>& indices);
+        void CreateVertexBuffer(const std::vector<Vertex>& vertices);
+        void CreateIndexBuffer(const std::vector<uint32_t>& indices);
 
-        vk::Device m_Device;
-        vk::PhysicalDevice m_GPU;
+        RenderContext& m_RenderContext;
         CommandPool& m_CommandPool;
 
-        vk::Buffer m_VertexBuffer;
-        vk::DeviceMemory m_VertexBufferMemory;
+        std::shared_ptr<Buffer> m_VertexBuffer;
         uint32_t m_VertexCount;
 
         bool m_HasIndexBuffer = false;
-        vk::Buffer m_IndexBuffer;
-        vk::DeviceMemory m_IndexBufferMemory;
+        std::shared_ptr<Buffer> m_IndexBuffer;
         uint32_t m_IndexCount;
     };
 }

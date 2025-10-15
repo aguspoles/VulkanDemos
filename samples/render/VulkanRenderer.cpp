@@ -8,6 +8,7 @@
 #include "render/Swapchain.h"
 #include "render/CommandPool.h"
 #include "render/Mesh.h"
+#include "render/Buffer.h"
 #include "scene/GameObject.h"
 #include "scene/Camera.h"
 
@@ -108,23 +109,23 @@ namespace prm
 
         m_RenderContext.r_Device.waitIdle(); //Wait for all resources to finish being used
 
-        for (auto layout : m_DescriptoSetLayouts)
-            m_RenderContext.r_Device.destroyDescriptorSetLayout(layout);
-
-        m_RenderContext.r_Device.destroyDescriptorPool(m_DescriptorPool);
-
-        m_RenderContext.r_Device.destroyBuffer(m_MVPMatrixUniformBuffer);
-        m_RenderContext.r_Device.freeMemory(m_MVPMatrixDeviceMemory);
-
         m_GraphicsCommandPool.reset();
 
         m_GraphicsPipeline.reset();
+
         if (m_PipeLayout)
         {
             m_RenderContext.r_Device.destroyPipelineLayout(m_PipeLayout);
         }
 
+        m_RenderContext.r_Device.destroyDescriptorPool(m_DescriptorPool);
+
+        for (auto layout : m_DescriptoSetLayouts)
+            m_RenderContext.r_Device.destroyDescriptorSetLayout(layout);
+
         m_Swapchain.reset();
+
+        m_ShaderUniformBuffer.reset();
 
         if (m_RenderContext.r_Surface)
         {
@@ -182,7 +183,7 @@ namespace prm
         m_ShaderInfos = { vertInfo, fragInfo };
 
         //Uniform buffer to store the mvp matrix
-        CreateBuffer(m_MVPMatrixUniformBuffer, 16 * sizeof(float), m_MVPMatrixDeviceMemory, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eUniformBuffer);
+        m_ShaderUniformBuffer = Buffer::CreateBuffer(m_RenderContext, 16 * sizeof(float), vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eUniformBuffer);
 
         CreateSwapchain();
 
@@ -190,9 +191,9 @@ namespace prm
 
         CreatePipelineLayout();
 
-        m_GraphicsPipeline = std::make_unique<GraphicsPipeline>(m_RenderContext.r_Device, m_PipeCache, m_PipelineState, m_ShaderInfos);
-
         m_GraphicsCommandPool = std::make_unique<CommandPool>(m_RenderContext);
+
+        m_GraphicsPipeline = std::make_unique<GraphicsPipeline>(m_RenderContext.r_Device, m_PipeCache, m_PipelineState, m_ShaderInfos);
     }
 
     void VulkanRenderer::Draw(const std::vector<GameObject>& gameObjects, const Camera& camera)
@@ -476,7 +477,7 @@ namespace prm
         m_DescriptorSets = m_RenderContext.r_Device.allocateDescriptorSets(descriptorSetAllocateInfo);
 
         vk::DescriptorBufferInfo bufferInfo;
-        bufferInfo.buffer = m_MVPMatrixUniformBuffer;
+        bufferInfo.buffer = m_ShaderUniformBuffer->GetDeviceBuffer();
         bufferInfo.offset = 0;
         bufferInfo.range = VK_WHOLE_SIZE;
         std::vector<vk::DescriptorBufferInfo> bufferInfos{ bufferInfo };
@@ -588,7 +589,7 @@ namespace prm
                         &push);
 
                     auto mvp = projectionView * modelMatrix;
-                    SubmitDataToBuffer(16 * sizeof(float), m_MVPMatrixUniformBuffer, &mvp);
+                    m_ShaderUniformBuffer->UpdateDeviceData(&mvp, *m_GraphicsCommandPool);
 
                     bufferHandle.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, m_PipeLayout, 0, static_cast<uint32_t>(m_DescriptorSets.size()), m_DescriptorSets.data(), 0, nullptr);
 
@@ -714,75 +715,6 @@ namespace prm
 
         //Pipeline depends on swapchain extent
         m_GraphicsPipeline = std::make_unique<GraphicsPipeline>(m_RenderContext.r_Device, m_PipeCache, m_PipelineState, m_ShaderInfos);
-    }
-
-    void VulkanRenderer::CreateBuffer(vk::Buffer& buffer, vk::DeviceSize bufferSize, vk::DeviceMemory& bufferMemory, vk::BufferUsageFlags usage)
-    {
-        vk::BufferCreateInfo bufferInfo;
-        bufferInfo.size = bufferSize;
-        bufferInfo.usage = usage;
-        bufferInfo.sharingMode = vk::SharingMode::eExclusive;
-
-        VK_CHECK(m_RenderContext.r_Device.createBuffer(&bufferInfo, nullptr, &buffer));
-
-        vk::MemoryRequirements memRequirements;
-        m_RenderContext.r_Device.getBufferMemoryRequirements(buffer, &memRequirements);
-
-        vk::MemoryAllocateInfo allocateInfo{};
-        allocateInfo.allocationSize = memRequirements.size;
-        allocateInfo.memoryTypeIndex = FindMemoryTypeIndex(memRequirements.memoryTypeBits, m_RenderContext.r_GPU.getMemoryProperties(), vk::MemoryPropertyFlagBits::eDeviceLocal);
-
-        VK_CHECK(m_RenderContext.r_Device.allocateMemory(&allocateInfo, nullptr, &bufferMemory));
-
-        m_RenderContext.r_Device.bindBufferMemory(buffer, bufferMemory, 0);
-    }
-
-    void VulkanRenderer::SubmitDataToBuffer(vk::DeviceSize bufferSize, vk::Buffer buffer, void* srcData) const
-    {
-        //Staging buffer set up
-        vk::Buffer stagingBuffer;
-        vk::DeviceMemory stagingBufferMemory;
-
-        vk::BufferCreateInfo bufferInfo;
-        bufferInfo.size = bufferSize;
-        bufferInfo.usage = vk::BufferUsageFlagBits::eTransferSrc;
-        bufferInfo.sharingMode = vk::SharingMode::eExclusive;
-
-        VK_CHECK(m_RenderContext.r_Device.createBuffer(&bufferInfo, nullptr, &stagingBuffer));
-
-        vk::MemoryRequirements memRequirements;
-        m_RenderContext.r_Device.getBufferMemoryRequirements(stagingBuffer, &memRequirements);
-
-        auto hostVisible = vk::MemoryPropertyFlagBits::eHostVisible;
-        auto coherent = vk::MemoryPropertyFlagBits::eHostCoherent;
-        auto mask = static_cast<vk::MemoryPropertyFlagBits> (
-            static_cast<std::underlying_type_t<vk::MemoryPropertyFlagBits>>(hostVisible) |
-            static_cast<std::underlying_type_t<vk::MemoryPropertyFlagBits>>(coherent)
-            );
-
-        vk::MemoryAllocateInfo allocInfo{};
-        allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = FindMemoryTypeIndex(memRequirements.memoryTypeBits, m_RenderContext.r_GPU.getMemoryProperties(), mask);
-
-        VK_CHECK(m_RenderContext.r_Device.allocateMemory(&allocInfo, nullptr, &stagingBufferMemory));
-
-        m_RenderContext.r_Device.bindBufferMemory(stagingBuffer, stagingBufferMemory, 0);
-
-        void* data;
-        VK_CHECK(m_RenderContext.r_Device.mapMemory(stagingBufferMemory, 0, bufferSize, {}, &data));
-        memcpy(data, srcData, static_cast<size_t>(bufferSize));
-        m_RenderContext.r_Device.unmapMemory(stagingBufferMemory);
-
-        //Copy data between buffers
-        vk::CommandBuffer commandBuffer = m_GraphicsCommandPool->BeginOneTimeSubmitCommand();
-
-        vk::BufferCopy copyRegion{};
-        copyRegion.srcOffset = 0;  // Optional
-        copyRegion.dstOffset = 0;  // Optional
-        copyRegion.size = bufferSize;
-        commandBuffer.copyBuffer(stagingBuffer, buffer, 1, &copyRegion);
-
-        m_GraphicsCommandPool->EndOneTimeSubmitCommand(commandBuffer);
     }
 
     float VulkanRenderer::GetAspectRatio() const

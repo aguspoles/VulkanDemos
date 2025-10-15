@@ -4,7 +4,7 @@ project(Samples LANGUAGES C CXX)
 
 include_directories(INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 
-set(ENGINE_FILES
+set(APP_FILES
     # Header Files
     DemoApplication.h
     # Source Files
@@ -12,73 +12,48 @@ set(ENGINE_FILES
     DemoApplication.cpp
 )
 
-set(PLATFORM_FILES
-    # Header Files
-    platform/GlfwWindow.h
-    platform/Platform.h
-    platform/Window.h
-    platform/WindowsPlatform.h
-    platform/FileSystem.h
-    platform/Application.h
-    platform/InputEvents.h
-    # Source Files
-    platform/GlfwWindow.cpp
-    platform/Platform.cpp
-    platform/Window.cpp
-    platform/WindowsPlatform.cpp
-    platform/FileSystem.cpp
-    platform/Application.cpp
-    platform/InputEvents.cpp
+set(PLATFORM_FILES_DIR
+    platform
+)
+
+file(GLOB PLATFORM_FILES
+         "${PLATFORM_FILES_DIR}/*.cpp"
+         "${PLATFORM_FILES_DIR}/*.h"
     )
 
-set(CORE_FILES
-    # Header Files
-    core/Timer.h
-    core/Logger.h
-    core/Error.h
-    core/Helpers.h
-    # Source Files
-    core/Timer.cpp
-    core/Logger.cpp
-    core/Error.cpp
-    core/Helpers.cpp
-    core/glm_defs.h
+set(CORE_FILES_DIR
+    core
 )
 
-set(RENDER_FILES
-    # Header Files
-    render/VulkanRenderer.h
-    render/Utilities.h
-    render/GraphicsPipeline.h
-    render/PipelineState.h
-    render/Swapchain.h
-    render/CommandPool.h
-    render/CommandBuffer.h
-    render/Mesh.h
-    # Source Files
-    render/VulkanRenderer.cpp
-    render/Utilities.cpp
-    render/GraphicsPipeline.cpp
-    render/PipelineState.cpp
-    render/Swapchain.cpp
-    render/CommandPool.cpp
-    render/CommandBuffer.cpp
-    render/Mesh.cpp
-)
-
-set(SCENE_FILES 
-    scene/Camera.h
-    scene/GameObject.h
-    scene/Camera.cpp
-    scene/GameObject.cpp
+file(GLOB CORE_FILES
+         "${CORE_FILES_DIR}/*.cpp"
+         "${CORE_FILES_DIR}/*.h"
     )
 
-set(LOADER_FILES
+set(RENDER_FILES_DIR
+    render
+)
+
+file(GLOB RENDER_FILES
+         "${RENDER_FILES_DIR}/*.cpp"
+         "${RENDER_FILES_DIR}/*.h"
+    )
+
+set(SCENE_FILES_DIR
+    scene
+)
+
+file(GLOB SCENE_FILES
+         "${SCENE_FILES_DIR}/*.cpp"
+         "${SCENE_FILES_DIR}/*.h"
+    )
+
+set(LOADER_FILES_DIR
     # Header Files
     # Source Files
 )
 
-source_group("\\" FILES ${ENGINE_FILES})
+source_group("\\" FILES ${APP_FILES})
 source_group("core\\" FILES ${CORE_FILES})
 source_group("platform\\" FILES ${PLATFORM_FILES})
 source_group("render\\" FILES ${RENDER_FILES})
@@ -86,7 +61,7 @@ source_group("loaders\\" FILES ${LOADER_FILES})
 source_group("scene\\" FILES ${SCENE_FILES})
 
 set(PROJECT_FILES
-    ${ENGINE_FILES}
+    ${APP_FILES}
     ${PLATFORM_FILES}
     ${CORE_FILES}
     ${RENDER_FILES}
