@@ -108,6 +108,14 @@ namespace prm
 
         m_RenderContext.r_Device.waitIdle(); //Wait for all resources to finish being used
 
+        for (auto layout : m_DescriptoSetLayouts)
+            m_RenderContext.r_Device.destroyDescriptorSetLayout(layout);
+
+        m_RenderContext.r_Device.destroyDescriptorPool(m_DescriptorPool);
+
+        m_RenderContext.r_Device.destroyBuffer(m_MVPMatrixUniformBuffer);
+        m_RenderContext.r_Device.freeMemory(m_MVPMatrixDeviceMemory);
+
         m_GraphicsCommandPool.reset();
 
         m_GraphicsPipeline.reset();
@@ -173,7 +181,12 @@ namespace prm
 
         m_ShaderInfos = { vertInfo, fragInfo };
 
+        //Uniform buffer to store the mvp matrix
+        CreateBuffer(m_MVPMatrixUniformBuffer, 16 * sizeof(float), m_MVPMatrixDeviceMemory, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eUniformBuffer);
+
         CreateSwapchain();
+
+        CreateDescriptorSets();
 
         CreatePipelineLayout();
 
@@ -422,6 +435,78 @@ namespace prm
         m_Swapchain = std::make_unique<Swapchain>(m_RenderContext, windowExtent, std::move(m_Swapchain));
     }
 
+    void VulkanRenderer::CreateDescriptorSets()
+    {
+        vk::DescriptorSetLayoutBinding uniformBinding;
+        uniformBinding.binding = 0;
+        uniformBinding.descriptorType = vk::DescriptorType::eUniformBuffer;
+        uniformBinding.descriptorCount = 1;
+        uniformBinding.stageFlags = vk::ShaderStageFlagBits::eVertex;
+
+        std::vector<vk::DescriptorSetLayoutBinding> bindings{ uniformBinding };
+
+        vk::DescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo;
+        descriptorSetLayoutCreateInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+        descriptorSetLayoutCreateInfo.pBindings = &bindings[0];
+
+        vk::DescriptorSetLayout descriptorSetLayout;
+        descriptorSetLayout = m_RenderContext.r_Device.createDescriptorSetLayout(descriptorSetLayoutCreateInfo);
+
+        vk::DescriptorPoolSize descriptorPoolSize;
+        descriptorPoolSize.type = vk::DescriptorType::eUniformBuffer;
+        descriptorPoolSize.descriptorCount = 1;
+
+        std::vector<vk::DescriptorPoolSize> descriptorPoolTypes{ descriptorPoolSize };
+
+        vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo;
+        descriptorPoolCreateInfo.poolSizeCount = static_cast<uint32_t>(descriptorPoolTypes.size());
+        descriptorPoolCreateInfo.pPoolSizes = &descriptorPoolTypes[0];
+        descriptorPoolCreateInfo.maxSets = 1;
+
+        m_DescriptorPool = m_RenderContext.r_Device.createDescriptorPool(descriptorPoolCreateInfo);
+
+        m_DescriptoSetLayouts.push_back(descriptorSetLayout);
+
+        vk::DescriptorSetAllocateInfo descriptorSetAllocateInfo;
+        descriptorSetAllocateInfo.descriptorPool = m_DescriptorPool;
+        descriptorSetAllocateInfo.descriptorSetCount = static_cast<uint32_t>(m_DescriptoSetLayouts.size());
+        descriptorSetAllocateInfo.pSetLayouts = &m_DescriptoSetLayouts[0];
+
+        m_DescriptorSets.resize(m_DescriptoSetLayouts.size());
+        m_DescriptorSets = m_RenderContext.r_Device.allocateDescriptorSets(descriptorSetAllocateInfo);
+
+        vk::DescriptorBufferInfo bufferInfo;
+        bufferInfo.buffer = m_MVPMatrixUniformBuffer;
+        bufferInfo.offset = 0;
+        bufferInfo.range = VK_WHOLE_SIZE;
+        std::vector<vk::DescriptorBufferInfo> bufferInfos{ bufferInfo };
+
+        std::vector<BufferDescriptorInfo> bufferDescriptorInfos;
+        BufferDescriptorInfo bufferDescriptor;
+        bufferDescriptor.TargetDescriptorSet = m_DescriptorSets[0];
+        bufferDescriptor.TargetDescriptorBinding = 0;
+        bufferDescriptor.TargetArrayElement = 0;
+        bufferDescriptor.TargetDescriptorType = vk::DescriptorType::eUniformBuffer;
+        bufferDescriptor.BufferInfos = bufferInfos;
+        bufferDescriptorInfos.push_back(bufferDescriptor);
+
+        std::vector<vk::WriteDescriptorSet> writeDescriptors;
+        for (auto& buffer_descriptor : bufferDescriptorInfos) {
+            writeDescriptors.push_back({
+              buffer_descriptor.TargetDescriptorSet,
+              buffer_descriptor.TargetDescriptorBinding,
+              buffer_descriptor.TargetArrayElement,
+              static_cast<uint32_t>(buffer_descriptor.BufferInfos.size()),
+              buffer_descriptor.TargetDescriptorType,
+              nullptr,
+              buffer_descriptor.BufferInfos.data(),
+              nullptr
+                });
+        }
+
+        m_RenderContext.r_Device.updateDescriptorSets(writeDescriptors, {});
+    }
+
     void VulkanRenderer::CreatePipelineLayout()
     {
         vk::PushConstantRange pushConstantRange;
@@ -430,10 +515,10 @@ namespace prm
         pushConstantRange.size = sizeof(SimplePushConstantData);
 
         vk::PipelineLayoutCreateInfo layoutInfo;
-        layoutInfo.pSetLayouts = nullptr;
-        layoutInfo.setLayoutCount = 0;
         layoutInfo.pushConstantRangeCount = 1;
         layoutInfo.pPushConstantRanges = &pushConstantRange;
+        layoutInfo.setLayoutCount = static_cast<uint32_t>(m_DescriptoSetLayouts.size());
+        layoutInfo.pSetLayouts = &m_DescriptoSetLayouts[0];
         if (m_PipeLayout)
         {
             m_RenderContext.r_Device.destroyPipelineLayout(m_PipeLayout);
@@ -493,7 +578,6 @@ namespace prm
                 {
                     SimplePushConstantData push{};
                     auto modelMatrix = go.transform.mat4();
-                    push.transform = projectionView * modelMatrix;
                     push.modelMatrix = modelMatrix;
 
                     bufferHandle.pushConstants(
@@ -502,6 +586,11 @@ namespace prm
                         0,
                         sizeof(SimplePushConstantData),
                         &push);
+
+                    auto mvp = projectionView * modelMatrix;
+                    SubmitDataToBuffer(16 * sizeof(float), m_MVPMatrixUniformBuffer, &mvp);
+
+                    bufferHandle.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, m_PipeLayout, 0, static_cast<uint32_t>(m_DescriptorSets.size()), m_DescriptorSets.data(), 0, nullptr);
 
                     go.model->Bind(bufferHandle);
                     go.model->Draw(bufferHandle);
@@ -625,6 +714,75 @@ namespace prm
 
         //Pipeline depends on swapchain extent
         m_GraphicsPipeline = std::make_unique<GraphicsPipeline>(m_RenderContext.r_Device, m_PipeCache, m_PipelineState, m_ShaderInfos);
+    }
+
+    void VulkanRenderer::CreateBuffer(vk::Buffer& buffer, vk::DeviceSize bufferSize, vk::DeviceMemory& bufferMemory, vk::BufferUsageFlags usage)
+    {
+        vk::BufferCreateInfo bufferInfo;
+        bufferInfo.size = bufferSize;
+        bufferInfo.usage = usage;
+        bufferInfo.sharingMode = vk::SharingMode::eExclusive;
+
+        VK_CHECK(m_RenderContext.r_Device.createBuffer(&bufferInfo, nullptr, &buffer));
+
+        vk::MemoryRequirements memRequirements;
+        m_RenderContext.r_Device.getBufferMemoryRequirements(buffer, &memRequirements);
+
+        vk::MemoryAllocateInfo allocateInfo{};
+        allocateInfo.allocationSize = memRequirements.size;
+        allocateInfo.memoryTypeIndex = FindMemoryTypeIndex(memRequirements.memoryTypeBits, m_RenderContext.r_GPU.getMemoryProperties(), vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+        VK_CHECK(m_RenderContext.r_Device.allocateMemory(&allocateInfo, nullptr, &bufferMemory));
+
+        m_RenderContext.r_Device.bindBufferMemory(buffer, bufferMemory, 0);
+    }
+
+    void VulkanRenderer::SubmitDataToBuffer(vk::DeviceSize bufferSize, vk::Buffer buffer, void* srcData) const
+    {
+        //Staging buffer set up
+        vk::Buffer stagingBuffer;
+        vk::DeviceMemory stagingBufferMemory;
+
+        vk::BufferCreateInfo bufferInfo;
+        bufferInfo.size = bufferSize;
+        bufferInfo.usage = vk::BufferUsageFlagBits::eTransferSrc;
+        bufferInfo.sharingMode = vk::SharingMode::eExclusive;
+
+        VK_CHECK(m_RenderContext.r_Device.createBuffer(&bufferInfo, nullptr, &stagingBuffer));
+
+        vk::MemoryRequirements memRequirements;
+        m_RenderContext.r_Device.getBufferMemoryRequirements(stagingBuffer, &memRequirements);
+
+        auto hostVisible = vk::MemoryPropertyFlagBits::eHostVisible;
+        auto coherent = vk::MemoryPropertyFlagBits::eHostCoherent;
+        auto mask = static_cast<vk::MemoryPropertyFlagBits> (
+            static_cast<std::underlying_type_t<vk::MemoryPropertyFlagBits>>(hostVisible) |
+            static_cast<std::underlying_type_t<vk::MemoryPropertyFlagBits>>(coherent)
+            );
+
+        vk::MemoryAllocateInfo allocInfo{};
+        allocInfo.allocationSize = memRequirements.size;
+        allocInfo.memoryTypeIndex = FindMemoryTypeIndex(memRequirements.memoryTypeBits, m_RenderContext.r_GPU.getMemoryProperties(), mask);
+
+        VK_CHECK(m_RenderContext.r_Device.allocateMemory(&allocInfo, nullptr, &stagingBufferMemory));
+
+        m_RenderContext.r_Device.bindBufferMemory(stagingBuffer, stagingBufferMemory, 0);
+
+        void* data;
+        VK_CHECK(m_RenderContext.r_Device.mapMemory(stagingBufferMemory, 0, bufferSize, {}, &data));
+        memcpy(data, srcData, static_cast<size_t>(bufferSize));
+        m_RenderContext.r_Device.unmapMemory(stagingBufferMemory);
+
+        //Copy data between buffers
+        vk::CommandBuffer commandBuffer = m_GraphicsCommandPool->BeginOneTimeSubmitCommand();
+
+        vk::BufferCopy copyRegion{};
+        copyRegion.srcOffset = 0;  // Optional
+        copyRegion.dstOffset = 0;  // Optional
+        copyRegion.size = bufferSize;
+        commandBuffer.copyBuffer(stagingBuffer, buffer, 1, &copyRegion);
+
+        m_GraphicsCommandPool->EndOneTimeSubmitCommand(commandBuffer);
     }
 
     float VulkanRenderer::GetAspectRatio() const

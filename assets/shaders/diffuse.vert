@@ -10,9 +10,12 @@ layout(location = 3) in vec2 uv;
 layout(location = 0) out vec3 fragColor;
 
 layout(push_constant) uniform Push{
-    mat4 transform; // projection * view * model (later we will use uniform buffers)
     mat4 modelMatrix;
 } push;
+
+layout(set=0, binding=0) uniform Transform {
+    mat4 mvp; // projection * view * model
+} transform;
 
 const vec3 DIERCTION_TO_LIGHT = normalize(vec3(1.0f, -3.0f, -1.0f));
 
@@ -25,7 +28,7 @@ void main()
 
     float lightIntensity = max(dot(normalWorldSpace, DIERCTION_TO_LIGHT), 0.f);
     
-    gl_Position = push.transform * vec4(position, 1.0f);
+    gl_Position = transform.mvp * vec4(position, 1.0f);
     fragColor = lightIntensity * color;
 }
  

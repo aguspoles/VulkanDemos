@@ -83,9 +83,17 @@ namespace prm
 
     struct SimplePushConstantData
     {
-        glm::mat4 transform{ 1.0f };
         glm::mat4 modelMatrix{ 1.0f };
         //alignas(16) glm::vec3 color{};
+    };
+
+    struct BufferDescriptorInfo 
+    {
+        vk::DescriptorSet TargetDescriptorSet;
+        uint32_t TargetDescriptorBinding;
+        uint32_t TargetArrayElement;
+        vk::DescriptorType TargetDescriptorType;
+        std::vector<vk::DescriptorBufferInfo> BufferInfos;
     };
 
     uint32_t FindMemoryTypeIndex(uint32_t allowedTypes, vk::PhysicalDeviceMemoryProperties gpuProperties, vk::MemoryPropertyFlagBits desiredProperties);

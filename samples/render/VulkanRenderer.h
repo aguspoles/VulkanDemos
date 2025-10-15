@@ -37,6 +37,10 @@ namespace prm
         const RenderContext& GetRenderContext() const { return m_RenderContext; }
         CommandPool& GetCommandPool() { return *m_GraphicsCommandPool; }
 
+        //Requester of buffer must free buffer
+        void CreateBuffer(vk::Buffer& buffer, vk::DeviceSize bufferSize, vk::DeviceMemory& bufferMemory, vk::BufferUsageFlags usage);
+        void SubmitDataToBuffer(vk::DeviceSize bufferSize, vk::Buffer buffer, void* srcData) const;
+
         float GetAspectRatio() const;
 
     private:
@@ -47,6 +51,10 @@ namespace prm
         vk::PipelineCache m_PipeCache;
         PipelineState m_PipelineState;
         std::vector<ShaderInfo> m_ShaderInfos;
+
+        vk::DescriptorPool m_DescriptorPool;
+        std::vector<vk::DescriptorSet> m_DescriptorSets;
+        std::vector<vk::DescriptorSetLayout> m_DescriptoSetLayouts;
         
         std::vector<const char*> m_EnabledInstanceExtensions;
         std::vector<const char*> m_EnabledDeviceExtensions;
@@ -57,6 +65,9 @@ namespace prm
 
         std::string m_VertexShaderPath;
         std::string m_FragmentShaderPath;
+
+        vk::Buffer m_MVPMatrixUniformBuffer;
+        vk::DeviceMemory m_MVPMatrixDeviceMemory;
 
 #if defined(VKB_DEBUG)
         DebugInfo m_DebugInfo;
@@ -73,6 +84,8 @@ namespace prm
         QueueFamilyIndices GetQueueFamilyIndices(const vk::PhysicalDevice& gpu) const;
 
         void CreateSwapchain();
+
+        void CreateDescriptorSets();
 
         void CreatePipelineLayout();
 
