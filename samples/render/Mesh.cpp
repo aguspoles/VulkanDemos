@@ -87,7 +87,7 @@ namespace prm {
         m_IndexBuffer->UpdateDeviceData(static_cast<const void*>(indices.data()), m_CommandPool);
     }
 
-    void Mesh::Draw(vk::CommandBuffer commandBuffer) const
+    void Mesh::DrawToRenderCommandBuffer(vk::CommandBuffer commandBuffer) const
     {
         if (m_HasIndexBuffer) 
         {
@@ -99,7 +99,7 @@ namespace prm {
         }
     }
 
-    void Mesh::Bind(vk::CommandBuffer commandBuffer) const
+    void Mesh::BindToRenderCommandBuffer(vk::CommandBuffer commandBuffer) const
     {
         vk::Buffer buffers[] = { m_VertexBuffer->GetDeviceBuffer()};
         vk::DeviceSize offsets[] = { 0 };

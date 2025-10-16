@@ -9,7 +9,7 @@
 #include "render/CommandPool.h"
 #include "render/Mesh.h"
 #include "render/Buffer.h"
-#include "scene/GameObject.h"
+#include "render/RenderableObject.h"
 #include "scene/Camera.h"
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
@@ -125,7 +125,7 @@ namespace prm
 
         m_Swapchain.reset();
 
-        m_ShaderUniformBuffer.reset();
+        m_CameraMatricesUniformBuffer.reset();
 
         if (m_RenderContext.r_Surface)
         {
@@ -182,8 +182,8 @@ namespace prm
 
         m_ShaderInfos = { vertInfo, fragInfo };
 
-        //Uniform buffer to store the mvp matrix
-        m_ShaderUniformBuffer = Buffer::CreateBuffer(m_RenderContext, 16 * sizeof(float), vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eUniformBuffer);
+        //Uniform buffer to store the vp matrix
+        m_CameraMatricesUniformBuffer = Buffer::CreateBuffer(m_RenderContext, sizeof(CameraTransformUniformData), vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eUniformBuffer);
 
         CreateSwapchain();
 
@@ -196,7 +196,7 @@ namespace prm
         m_GraphicsPipeline = std::make_unique<GraphicsPipeline>(m_RenderContext.r_Device, m_PipeCache, m_PipelineState, m_ShaderInfos);
     }
 
-    void VulkanRenderer::Draw(const std::vector<GameObject>& gameObjects, const Camera& camera)
+    void VulkanRenderer::Draw(const std::vector<IRenderableObject*>& renderableObjects, const Camera& camera)
     {
         uint32_t index;
 
@@ -215,7 +215,7 @@ namespace prm
             return;
         }
 
-        Render(index, gameObjects, camera);
+        Render(index, renderableObjects, camera);
 
         // Handle Outdated error in present.
         if (res == vk::Result::eSuboptimalKHR || res == vk::Result::eErrorOutOfDateKHR)
@@ -453,6 +453,8 @@ namespace prm
         vk::DescriptorSetLayout descriptorSetLayout;
         descriptorSetLayout = m_RenderContext.r_Device.createDescriptorSetLayout(descriptorSetLayoutCreateInfo);
 
+        m_DescriptoSetLayouts.push_back(descriptorSetLayout);
+
         vk::DescriptorPoolSize descriptorPoolSize;
         descriptorPoolSize.type = vk::DescriptorType::eUniformBuffer;
         descriptorPoolSize.descriptorCount = 1;
@@ -465,9 +467,7 @@ namespace prm
         descriptorPoolCreateInfo.maxSets = 1;
 
         m_DescriptorPool = m_RenderContext.r_Device.createDescriptorPool(descriptorPoolCreateInfo);
-
-        m_DescriptoSetLayouts.push_back(descriptorSetLayout);
-
+        
         vk::DescriptorSetAllocateInfo descriptorSetAllocateInfo;
         descriptorSetAllocateInfo.descriptorPool = m_DescriptorPool;
         descriptorSetAllocateInfo.descriptorSetCount = static_cast<uint32_t>(m_DescriptoSetLayouts.size());
@@ -477,7 +477,7 @@ namespace prm
         m_DescriptorSets = m_RenderContext.r_Device.allocateDescriptorSets(descriptorSetAllocateInfo);
 
         vk::DescriptorBufferInfo bufferInfo;
-        bufferInfo.buffer = m_ShaderUniformBuffer->GetDeviceBuffer();
+        bufferInfo.buffer = m_CameraMatricesUniformBuffer->GetDeviceBuffer();
         bufferInfo.offset = 0;
         bufferInfo.range = VK_WHOLE_SIZE;
         std::vector<vk::DescriptorBufferInfo> bufferInfos{ bufferInfo };
@@ -540,7 +540,7 @@ namespace prm
         m_PipelineState.SetVertexInputState(vertexData);
     }
 
-    void VulkanRenderer::RecordCommandBuffer(uint32_t index, const std::vector<GameObject>& gameObjects, const Camera& camera) const
+    void VulkanRenderer::RecordCommandBuffer(uint32_t index, const std::vector<IRenderableObject*>& renderableObjects, const Camera& camera) const
     {
         vk::CommandBufferBeginInfo info;
         info.flags = vk::CommandBufferUsageFlagBits::eSimultaneousUse; //Means buffer can be resubmitted when it is already submitted and waiting for execution
@@ -573,29 +573,16 @@ namespace prm
                 SetViewportAndScissor(bufferHandle);
 
                 bufferHandle.bindPipeline(vk::PipelineBindPoint::eGraphics, m_GraphicsPipeline->GetHandle());
+                bufferHandle.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, m_PipeLayout, 0, static_cast<uint32_t>(m_DescriptorSets.size()), m_DescriptorSets.data(), 0, nullptr);
 
-                auto projectionView = camera.GetProjectionMatrix() * camera.GetViewMatrix();
-                for (const auto& go : gameObjects)
+                for (const auto& object : renderableObjects)
                 {
-                    SimplePushConstantData push{};
-                    auto modelMatrix = go.transform.mat4();
-                    push.modelMatrix = modelMatrix;
-
-                    bufferHandle.pushConstants(
-                        m_PipeLayout,
-                        vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
-                        0,
-                        sizeof(SimplePushConstantData),
-                        &push);
-
-                    auto mvp = projectionView * modelMatrix;
-                    m_ShaderUniformBuffer->UpdateDeviceData(&mvp, *m_GraphicsCommandPool);
-
-                    bufferHandle.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, m_PipeLayout, 0, static_cast<uint32_t>(m_DescriptorSets.size()), m_DescriptorSets.data(), 0, nullptr);
-
-                    go.model->Bind(bufferHandle);
-                    go.model->Draw(bufferHandle);
+                    object->Render(bufferHandle, camera, m_PipeLayout);
                 }
+
+                CameraTransformUniformData uniformData{ camera.GetViewMatrix(), camera.GetProjectionMatrix() };
+
+                m_CameraMatricesUniformBuffer->UpdateDeviceData(&uniformData, *m_GraphicsCommandPool);
             }
 
             bufferHandle.endRenderPass();
@@ -619,9 +606,9 @@ namespace prm
         buffer.setScissor(0, { scissor });
     }
 
-    void VulkanRenderer::Render(uint32_t index, const std::vector<GameObject>& gameObjects, const Camera& camera)
+    void VulkanRenderer::Render(uint32_t index, const std::vector<IRenderableObject*>& renderableObjects, const Camera& camera)
     {
-        RecordCommandBuffer(index, gameObjects, camera);
+        RecordCommandBuffer(index, renderableObjects, camera);
 
         auto buffer = m_GraphicsCommandPool->RequestCommandBuffer(index).GetHandle();
         m_Swapchain->SubmitCommandBuffers(buffer, index);

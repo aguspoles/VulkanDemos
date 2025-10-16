@@ -13,9 +13,10 @@ layout(push_constant) uniform Push{
     mat4 modelMatrix;
 } push;
 
-layout(set=0, binding=0) uniform Transform {
-    mat4 mvp; // projection * view * model
-} transform;
+layout(set=0, binding=0) uniform CameraTransform {
+    mat4 view;
+    mat4 projection;
+} cameraTransform;
 
 const vec3 DIERCTION_TO_LIGHT = normalize(vec3(1.0f, -3.0f, -1.0f));
 
@@ -28,7 +29,7 @@ void main()
 
     float lightIntensity = max(dot(normalWorldSpace, DIERCTION_TO_LIGHT), 0.f);
     
-    gl_Position = transform.mvp * vec4(position, 1.0f);
+    gl_Position = cameraTransform.projection * cameraTransform.view * positionWorlSpace;
     fragColor = lightIntensity * color;
 }
  

@@ -1,6 +1,7 @@
 #pragma once
-#include "render/Mesh.h"
 #include "core/glm_defs.h"
+#include "render/Mesh.h"
+#include "render/RenderableObject.h"
 
 namespace prm {
 
@@ -52,7 +53,7 @@ namespace prm {
         }
     };
 
-    class GameObject {
+    class GameObject : public IRenderableObject{
     public:
         using id_t = uint32_t;
 
@@ -67,6 +68,10 @@ namespace prm {
         GameObject(GameObject&&) = default;
         GameObject& operator=(GameObject&&) = default;
 
+        void Render(vk::CommandBuffer commandBuffer, const Camera& camera, vk::PipelineLayout pipelineLayout) const override;
+
+        void SetUniformBuffer(std::shared_ptr<Buffer> uniformBuffer) { m_UniformBuffer = uniformBuffer; }
+
         id_t getId() { return m_Id; }
 
         std::shared_ptr<Mesh> model{};
@@ -77,5 +82,7 @@ namespace prm {
         GameObject(id_t objId) : m_Id{ objId } {}
 
         id_t m_Id;
+
+        std::shared_ptr<Buffer> m_UniformBuffer;
     };
 }  

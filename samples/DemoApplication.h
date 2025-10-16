@@ -29,6 +29,7 @@ namespace prm
         std::unique_ptr<VulkanRenderer> m_Renderer;
         std::shared_ptr<Mesh> m_Mesh;
         std::vector<GameObject> m_GameObjects;
+        std::vector<IRenderableObject*> m_RenderableObjects;
         Camera m_Camera;
         CameraMovement m_CurrentCameraMovement;
         bool m_ShouldMoveCamera;

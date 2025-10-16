@@ -43,8 +43,8 @@ namespace prm {
         static std::shared_ptr<Mesh> CreateModelFromFile(
             RenderContext& renderContext, CommandPool& commandPool, const std::string& filepath);
 
-        void Bind(vk::CommandBuffer commandBuffer) const;
-        void Draw(vk::CommandBuffer commandBuffer) const;
+        void BindToRenderCommandBuffer(vk::CommandBuffer commandBuffer) const;
+        void DrawToRenderCommandBuffer(vk::CommandBuffer commandBuffer) const;
 
     private:
         void CreateVertexBuffer(const std::vector<Vertex>& vertices);

@@ -87,6 +87,12 @@ namespace prm
         //alignas(16) glm::vec3 color{};
     };
 
+    struct CameraTransformUniformData
+    {
+        glm::mat4 viewMatrix{ 1.0f };
+        glm::mat4 proyectionMatrix{ 1.0f };
+    };
+
     struct BufferDescriptorInfo 
     {
         vk::DescriptorSet TargetDescriptorSet;

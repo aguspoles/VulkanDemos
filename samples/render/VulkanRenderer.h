@@ -10,7 +10,7 @@ namespace prm
     class Swapchain;
     class CommandPool;
     class Mesh;
-    class GameObject;
+    class IRenderableObject;
     class Camera;
     class Buffer;
 
@@ -29,7 +29,7 @@ namespace prm
         VulkanRenderer& operator=(VulkanRenderer&&) = delete;
 
         void Init();
-        void Draw(const std::vector<GameObject>& gameObjects, const Camera& camera);
+        void Draw(const std::vector<IRenderableObject*>& renderableObjects, const Camera& camera);
         void RecreateSwapchain();
 
         void SetVertexShader(const std::string& filePath) { m_VertexShaderPath = filePath; }
@@ -40,6 +40,8 @@ namespace prm
         CommandPool& GetCommandPool() { return *m_GraphicsCommandPool; }
 
         float GetAspectRatio() const;
+
+        std::shared_ptr<Buffer> GetShaderUniformBuffer() const { return m_CameraMatricesUniformBuffer; }
 
     private:
         Platform& m_Platform;
@@ -64,7 +66,7 @@ namespace prm
         std::string m_VertexShaderPath;
         std::string m_FragmentShaderPath;
 
-        std::shared_ptr<Buffer> m_ShaderUniformBuffer;
+        std::shared_ptr<Buffer> m_CameraMatricesUniformBuffer;
 
 #if defined(VKB_DEBUG)
         DebugInfo m_DebugInfo;
@@ -86,11 +88,11 @@ namespace prm
 
         void CreatePipelineLayout();
 
-        void RecordCommandBuffer(uint32_t index, const std::vector<GameObject>& gameObjects, const Camera& camera) const;
+        void RecordCommandBuffer(uint32_t index, const std::vector<IRenderableObject*>& renderableObjects, const Camera& camera) const;
 
         void SetViewportAndScissor(vk::CommandBuffer buffer) const;
 
-        void Render(uint32_t index, const std::vector<GameObject>& gameObjects, const Camera& camera);
+        void Render(uint32_t index, const std::vector<IRenderableObject*>& renderableObjects, const Camera& camera);
     };
 }
 
