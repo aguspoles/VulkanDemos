@@ -27,6 +27,7 @@
 #include <numeric>
 #include <mutex>
 #include <stdexcept>
+#include <type_traits>
 
 //Windows specific
 #ifdef WIN32

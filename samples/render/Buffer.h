@@ -16,7 +16,7 @@ namespace prm {
 
 		virtual ~Buffer();
 
-		template<class T>
+		template<class T, typename = std::enable_if<std::is_base_of<Buffer, T>::value || std::is_class<Buffer>::value>>
 		static std::shared_ptr<T> CreateBuffer(RenderContext& renderContext, vk::DeviceSize bufferSize, vk::BufferUsageFlags usage)
 		{
 			auto buffer = std::make_shared<T>(renderContext, bufferSize, usage);
