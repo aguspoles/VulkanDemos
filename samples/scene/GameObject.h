@@ -70,8 +70,6 @@ namespace prm {
 
         void Render(vk::CommandBuffer commandBuffer, const Camera& camera, vk::PipelineLayout pipelineLayout) const override;
 
-        void SetUniformBuffer(std::shared_ptr<Buffer> uniformBuffer) { m_UniformBuffer = uniformBuffer; }
-
         id_t getId() { return m_Id; }
 
         std::shared_ptr<Mesh> model{};
@@ -82,7 +80,5 @@ namespace prm {
         GameObject(id_t objId) : m_Id{ objId } {}
 
         id_t m_Id;
-
-        std::shared_ptr<Buffer> m_UniformBuffer;
     };
 }  

@@ -46,7 +46,6 @@ namespace prm
         m_GameObjects[0].transform.translation = { 0.f, 1.5f, 10.f };
         m_GameObjects[0].transform.scale = { 0.1f, 0.1f, 0.1f };
         m_GameObjects[0].transform.rotation = { 0, glm::radians(0.f), 0 };
-        m_GameObjects[0].SetUniformBuffer(m_Renderer->GetShaderUniformBuffer());
 
         m_RenderableObjects.push_back(static_cast<IRenderableObject*>(&m_GameObjects[0]));
 

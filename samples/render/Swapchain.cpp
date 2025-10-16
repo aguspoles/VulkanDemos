@@ -135,6 +135,11 @@ namespace prm
         CreateSyncObjects();
     }
 
+    uint8_t Swapchain::GetMaxFramesInFlight() const
+    {
+        return static_cast<uint8_t>(m_FrameBuffers.size());
+    }
+
     vk::Result Swapchain::AcquireNextImage(uint32_t& image)
     {
         VK_CHECK(m_RenderContext.r_Device.waitForFences(1, &m_InFlightFences[m_CurrentFrame], VK_TRUE, UINT64_MAX));

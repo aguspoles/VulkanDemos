@@ -41,8 +41,6 @@ namespace prm
 
         float GetAspectRatio() const;
 
-        std::shared_ptr<Buffer> GetShaderUniformBuffer() const { return m_CameraMatricesUniformBuffer; }
-
     private:
         Platform& m_Platform;
         RenderContext m_RenderContext;
@@ -66,7 +64,7 @@ namespace prm
         std::string m_VertexShaderPath;
         std::string m_FragmentShaderPath;
 
-        std::shared_ptr<Buffer> m_CameraMatricesUniformBuffer;
+        std::vector<std::shared_ptr<Buffer>> m_PerFrameUniformBuffers;
 
 #if defined(VKB_DEBUG)
         DebugInfo m_DebugInfo;
@@ -81,6 +79,8 @@ namespace prm
         void CheckDeviceExtensionsSupport(const std::vector<const char*>& required_extensions);
 
         QueueFamilyIndices GetQueueFamilyIndices(const vk::PhysicalDevice& gpu) const;
+
+        void CreateUniformBuffers();
 
         void CreateSwapchain();
 

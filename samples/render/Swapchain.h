@@ -19,6 +19,8 @@ namespace prm
 
         Swapchain& operator=(Swapchain&&) = delete;
 
+        uint8_t GetMaxFramesInFlight() const;
+
         vk::SwapchainKHR GetHandle() const { return m_Handle; }
 
         vk::Result AcquireNextImage(uint32_t& image);

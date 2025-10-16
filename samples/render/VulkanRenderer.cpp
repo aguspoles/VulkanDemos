@@ -123,9 +123,12 @@ namespace prm
         for (auto layout : m_DescriptoSetLayouts)
             m_RenderContext.r_Device.destroyDescriptorSetLayout(layout);
 
-        m_Swapchain.reset();
+        for (size_t i = 0; i < m_Swapchain->GetMaxFramesInFlight(); ++i)
+        {
+            m_PerFrameUniformBuffers[i].reset();
+        }
 
-        m_CameraMatricesUniformBuffer.reset();
+        m_Swapchain.reset();
 
         if (m_RenderContext.r_Surface)
         {
@@ -182,10 +185,10 @@ namespace prm
 
         m_ShaderInfos = { vertInfo, fragInfo };
 
-        //Uniform buffer to store the vp matrix
-        m_CameraMatricesUniformBuffer = Buffer::CreateBuffer(m_RenderContext, sizeof(CameraTransformUniformData), vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eUniformBuffer);
-
         CreateSwapchain();
+
+        //Uniform buffers to store per frame uniform data
+        CreateUniformBuffers();
 
         CreateDescriptorSets();
 
@@ -429,6 +432,15 @@ namespace prm
         return res;
     }
 
+    void VulkanRenderer::CreateUniformBuffers()
+    {
+        for (size_t i = 0; i < m_Swapchain->GetMaxFramesInFlight(); ++i)
+        {
+            auto buffer = Buffer::CreateBuffer<UniformBuffer>(m_RenderContext, sizeof(CameraTransformUniformData), vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eUniformBuffer);
+            m_PerFrameUniformBuffers.emplace_back(std::move(buffer));
+        }
+    }
+
     void VulkanRenderer::CreateSwapchain()
     {
         vk::SurfaceCapabilitiesKHR surface_properties = m_RenderContext.r_GPU.getSurfaceCapabilitiesKHR(m_RenderContext.r_Surface);
@@ -453,21 +465,21 @@ namespace prm
         vk::DescriptorSetLayout descriptorSetLayout;
         descriptorSetLayout = m_RenderContext.r_Device.createDescriptorSetLayout(descriptorSetLayoutCreateInfo);
 
-        m_DescriptoSetLayouts.push_back(descriptorSetLayout);
+        m_DescriptoSetLayouts.resize(m_Swapchain->GetMaxFramesInFlight(), descriptorSetLayout);
 
         vk::DescriptorPoolSize descriptorPoolSize;
         descriptorPoolSize.type = vk::DescriptorType::eUniformBuffer;
-        descriptorPoolSize.descriptorCount = 1;
+        descriptorPoolSize.descriptorCount = m_Swapchain->GetMaxFramesInFlight();
 
         std::vector<vk::DescriptorPoolSize> descriptorPoolTypes{ descriptorPoolSize };
 
         vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo;
         descriptorPoolCreateInfo.poolSizeCount = static_cast<uint32_t>(descriptorPoolTypes.size());
         descriptorPoolCreateInfo.pPoolSizes = &descriptorPoolTypes[0];
-        descriptorPoolCreateInfo.maxSets = 1;
+        descriptorPoolCreateInfo.maxSets = m_Swapchain->GetMaxFramesInFlight();
 
         m_DescriptorPool = m_RenderContext.r_Device.createDescriptorPool(descriptorPoolCreateInfo);
-        
+
         vk::DescriptorSetAllocateInfo descriptorSetAllocateInfo;
         descriptorSetAllocateInfo.descriptorPool = m_DescriptorPool;
         descriptorSetAllocateInfo.descriptorSetCount = static_cast<uint32_t>(m_DescriptoSetLayouts.size());
@@ -476,36 +488,27 @@ namespace prm
         m_DescriptorSets.resize(m_DescriptoSetLayouts.size());
         m_DescriptorSets = m_RenderContext.r_Device.allocateDescriptorSets(descriptorSetAllocateInfo);
 
-        vk::DescriptorBufferInfo bufferInfo;
-        bufferInfo.buffer = m_CameraMatricesUniformBuffer->GetDeviceBuffer();
-        bufferInfo.offset = 0;
-        bufferInfo.range = VK_WHOLE_SIZE;
-        std::vector<vk::DescriptorBufferInfo> bufferInfos{ bufferInfo };
+        std::vector<vk::WriteDescriptorSet> writeSets;
+        for (size_t i = 0; i < m_Swapchain->GetMaxFramesInFlight(); ++i)
+        {
+            vk::DescriptorBufferInfo bufferInfo;
+            bufferInfo.buffer = m_PerFrameUniformBuffers[i]->GetDeviceBuffer();
+            bufferInfo.offset = 0;
+            bufferInfo.range = VK_WHOLE_SIZE;
 
-        std::vector<BufferDescriptorInfo> bufferDescriptorInfos;
-        BufferDescriptorInfo bufferDescriptor;
-        bufferDescriptor.TargetDescriptorSet = m_DescriptorSets[0];
-        bufferDescriptor.TargetDescriptorBinding = 0;
-        bufferDescriptor.TargetArrayElement = 0;
-        bufferDescriptor.TargetDescriptorType = vk::DescriptorType::eUniformBuffer;
-        bufferDescriptor.BufferInfos = bufferInfos;
-        bufferDescriptorInfos.push_back(bufferDescriptor);
+            vk::WriteDescriptorSet writeDescriptorSet;
+            writeDescriptorSet.dstSet = m_DescriptorSets[i];
+            writeDescriptorSet.dstBinding = 0;
+            writeDescriptorSet.dstArrayElement = 0;
+            writeDescriptorSet.descriptorCount = 1;
+            writeDescriptorSet.descriptorType = vk::DescriptorType::eUniformBuffer;
+            writeDescriptorSet.pBufferInfo = &bufferInfo;
 
-        std::vector<vk::WriteDescriptorSet> writeDescriptors;
-        for (auto& buffer_descriptor : bufferDescriptorInfos) {
-            writeDescriptors.push_back({
-              buffer_descriptor.TargetDescriptorSet,
-              buffer_descriptor.TargetDescriptorBinding,
-              buffer_descriptor.TargetArrayElement,
-              static_cast<uint32_t>(buffer_descriptor.BufferInfos.size()),
-              buffer_descriptor.TargetDescriptorType,
-              nullptr,
-              buffer_descriptor.BufferInfos.data(),
-              nullptr
-                });
+            writeSets.emplace_back(writeDescriptorSet);
         }
 
-        m_RenderContext.r_Device.updateDescriptorSets(writeDescriptors, {});
+        m_RenderContext.r_Device.updateDescriptorSets(writeSets, {});
+
     }
 
     void VulkanRenderer::CreatePipelineLayout()
@@ -560,36 +563,36 @@ namespace prm
         auto frame = m_Swapchain->GetFrameBuffer(index);
         renderPassInfo.framebuffer = frame;
 
-        auto& buffer = m_GraphicsCommandPool->RequestCommandBuffer(index);
-        auto bufferHandle = buffer.GetHandle();
+        auto& commandBuffer = m_GraphicsCommandPool->RequestCommandBuffer(index);
+        auto commandBufferHandle = commandBuffer.GetHandle();
 
         //Start recording command buffer
-        VK_CHECK(bufferHandle.begin(&info));
+        VK_CHECK(commandBufferHandle.begin(&info));
 
         {
-            bufferHandle.beginRenderPass(&renderPassInfo, vk::SubpassContents::eInline);
+            commandBufferHandle.beginRenderPass(&renderPassInfo, vk::SubpassContents::eInline);
 
             {
-                SetViewportAndScissor(bufferHandle);
+                SetViewportAndScissor(commandBufferHandle);
 
-                bufferHandle.bindPipeline(vk::PipelineBindPoint::eGraphics, m_GraphicsPipeline->GetHandle());
-                bufferHandle.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, m_PipeLayout, 0, static_cast<uint32_t>(m_DescriptorSets.size()), m_DescriptorSets.data(), 0, nullptr);
+                commandBufferHandle.bindPipeline(vk::PipelineBindPoint::eGraphics, m_GraphicsPipeline->GetHandle());
+                commandBufferHandle.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, m_PipeLayout, 0, 1, &m_DescriptorSets[index], 0, nullptr);
 
                 for (const auto& object : renderableObjects)
                 {
-                    object->Render(bufferHandle, camera, m_PipeLayout);
+                    object->Render(commandBufferHandle, camera, m_PipeLayout);
                 }
 
                 CameraTransformUniformData uniformData{ camera.GetViewMatrix(), camera.GetProjectionMatrix() };
 
-                m_CameraMatricesUniformBuffer->UpdateDeviceData(&uniformData, *m_GraphicsCommandPool);
+                m_PerFrameUniformBuffers[index]->UpdateDeviceData(&uniformData, commandBufferHandle);
             }
 
-            bufferHandle.endRenderPass();
+            commandBufferHandle.endRenderPass();
         }
 
         //End recording
-        bufferHandle.end();
+        commandBufferHandle.end();
     }
 
     void VulkanRenderer::SetViewportAndScissor(vk::CommandBuffer buffer) const
