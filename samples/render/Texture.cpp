@@ -12,7 +12,7 @@ namespace prm {
 		assert(data);
 
 
-		auto buffer = Buffer::CreateBuffer<StagingBuffer>(renderContext, imageSize.BytesSize());
+		auto buffer = BufferBuilder::CreateBuffer<StagingBuffer>(renderContext, imageSize.BytesSize());
 		buffer->UpdateData(data);
 
 		vk::ImageCreateInfo imageInfo({}, 

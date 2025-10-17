@@ -100,12 +100,11 @@ namespace prm {
         VK_CHECK(m_RenderContext.r_Device.allocateMemory(&allocInfo, nullptr, &m_DeviceMemory));
 
         m_RenderContext.r_Device.bindBufferMemory(m_Buffer, m_DeviceMemory, 0);
-
-        VK_CHECK(m_RenderContext.r_Device.mapMemory(m_DeviceMemory, 0, m_BufferSize, {}, &m_Data));
     }
 
     void StagingBuffer::UpdateData(const void* srcData, vk::CommandBuffer commandBuffer)
     {
+        VK_CHECK(m_RenderContext.r_Device.mapMemory(m_DeviceMemory, 0, m_BufferSize, {}, &m_Data));
         memcpy(m_Data, srcData, static_cast<size_t>(m_BufferSize));
         m_RenderContext.r_Device.unmapMemory(m_DeviceMemory);
     }
@@ -113,7 +112,6 @@ namespace prm {
     MeshDataBuffer::MeshDataBuffer(RenderContext& renderContext, vk::DeviceSize bufferSize, vk::BufferUsageFlags usage)
         : Buffer(renderContext, bufferSize, usage)
     {
-        m_StagingBuffer = Buffer::CreateBuffer<StagingBuffer>(m_RenderContext, m_BufferSize);
     }
 
     MeshDataBuffer::~MeshDataBuffer()
@@ -124,6 +122,7 @@ namespace prm {
     void MeshDataBuffer::Init()
     {
         CreateBufferInDevice(vk::MemoryPropertyFlagBits::eDeviceLocal);
+        m_StagingBuffer = BufferBuilder::CreateBuffer<StagingBuffer>(m_RenderContext, m_BufferSize);
     }
 
     void MeshDataBuffer::UpdateData(const void* srcData, vk::CommandBuffer commandBuffer)

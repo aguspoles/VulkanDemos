@@ -436,7 +436,7 @@ namespace prm
     {
         for (size_t i = 0; i < m_Swapchain->GetMaxFramesInFlight(); ++i)
         {
-            auto buffer = Buffer::CreateBuffer<UniformBuffer>(m_RenderContext, sizeof(CameraTransformUniformData), vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eUniformBuffer);
+            auto buffer = BufferBuilder::CreateBuffer<UniformBuffer>(m_RenderContext, sizeof(CameraTransformUniformData), vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eUniformBuffer);
             m_PerFrameUniformBuffers.emplace_back(std::move(buffer));
         }
     }
