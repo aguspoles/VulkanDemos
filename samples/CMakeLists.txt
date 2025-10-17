@@ -126,6 +126,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
     vulkan
     spdlog
     tinyobj
+    stb
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE glfw)

@@ -4,6 +4,8 @@
 #include "platform/Platform.h"
 #include "platform/InputEvents.h"
 #include "render/Mesh.h"
+#include "render/Texture.h"
+#include "render/ImageLoader.h"
 
 namespace 
 {
@@ -20,6 +22,7 @@ namespace prm
     DemoApplication::~DemoApplication()
     {
         m_Renderer->GetRenderContext().r_Device.waitIdle();
+        m_Texture.reset();
         m_GameObjects.clear();
         m_Mesh.reset();
         m_Renderer.reset();
@@ -39,6 +42,13 @@ namespace prm
         RenderContext& context = m_Renderer->GetRenderContext();
 
         m_Mesh = Mesh::CreateModelFromFile(context, m_Renderer->GetCommandPool(), "assets/meshes/teapot.obj");
+
+        void* imageData = nullptr;
+        Texture::Extent imageExtent;
+
+        ImageLoader::LoadImageFromPath("assets/textures/statue.jpg", imageData, imageExtent);
+        m_Texture = std::make_shared<Texture>(m_Renderer->GetRenderContext(), imageData, imageExtent);
+        ImageLoader::UnloadImage(imageData);
 
         auto go = GameObject::CreateGameObject();
         m_GameObjects.push_back(std::move(go));

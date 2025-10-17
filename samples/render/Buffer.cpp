@@ -10,6 +10,7 @@ namespace prm {
         : m_RenderContext(renderContext)
         , m_BufferSize(bufferSize)
         , m_BufferUsage(usage)
+        , m_Data(nullptr)
     {
        
     }
@@ -41,51 +42,6 @@ namespace prm {
         m_RenderContext.r_Device.bindBufferMemory(m_Buffer, m_DeviceMemory, 0);
     }
 
-    void Buffer::Init()
-    {
-        CreateBufferInDevice(vk::MemoryPropertyFlagBits::eDeviceLocal);
-
-        //Staging buffer set up
-        vk::BufferCreateInfo stagingBufferInfo;
-        stagingBufferInfo.size = m_BufferSize;
-        stagingBufferInfo.usage = vk::BufferUsageFlagBits::eTransferSrc;
-        stagingBufferInfo.sharingMode = vk::SharingMode::eExclusive;
-
-        VK_CHECK(m_RenderContext.r_Device.createBuffer(&stagingBufferInfo, nullptr, &m_StagingBuffer));
-
-        vk::MemoryRequirements stagingMemRequirements;
-        m_RenderContext.r_Device.getBufferMemoryRequirements(m_StagingBuffer, &stagingMemRequirements);
-
-        auto hostVisible = vk::MemoryPropertyFlagBits::eHostVisible;
-        auto coherent = vk::MemoryPropertyFlagBits::eHostCoherent;
-        auto mask = static_cast<vk::MemoryPropertyFlagBits> (
-            static_cast<std::underlying_type_t<vk::MemoryPropertyFlagBits>>(hostVisible) |
-            static_cast<std::underlying_type_t<vk::MemoryPropertyFlagBits>>(coherent)
-            );
-
-        vk::MemoryAllocateInfo allocInfo{};
-        allocInfo.allocationSize = stagingMemRequirements.size;
-        allocInfo.memoryTypeIndex = FindMemoryTypeIndex(stagingMemRequirements.memoryTypeBits, m_RenderContext.r_GPU.getMemoryProperties(), mask);
-
-        VK_CHECK(m_RenderContext.r_Device.allocateMemory(&allocInfo, nullptr, &m_StagingBufferMemory));
-
-        m_RenderContext.r_Device.bindBufferMemory(m_StagingBuffer, m_StagingBufferMemory, 0);
-
-        VK_CHECK(m_RenderContext.r_Device.mapMemory(m_StagingBufferMemory, 0, m_BufferSize, {}, &m_Data));
-    }
-
-    void Buffer::UpdateDeviceData(const void* srcData, vk::CommandBuffer commandBuffer)
-    {
-        memcpy(m_Data, srcData, static_cast<size_t>(m_BufferSize));
-        m_RenderContext.r_Device.unmapMemory(m_StagingBufferMemory);
-
-        vk::BufferCopy copyRegion{};
-        copyRegion.srcOffset = 0;  // Optional
-        copyRegion.dstOffset = 0;  // Optional
-        copyRegion.size = m_BufferSize;
-        commandBuffer.copyBuffer(m_StagingBuffer, m_Buffer, 1, &copyRegion);
-    }
-
     UniformBuffer::UniformBuffer(RenderContext& renderContext, vk::DeviceSize bufferSize, vk::BufferUsageFlags usage)
         : Buffer(renderContext, bufferSize, usage)
     {
@@ -104,8 +60,80 @@ namespace prm {
         VK_CHECK(m_RenderContext.r_Device.mapMemory(m_DeviceMemory, 0, m_BufferSize, {}, &m_Data));
     }
 
-    void UniformBuffer::UpdateDeviceData(const void* srcData, vk::CommandBuffer commandBuffer)
+    void UniformBuffer::UpdateData(const void* srcData, vk::CommandBuffer commandBuffer)
     {
         memcpy(m_Data, srcData, static_cast<size_t>(m_BufferSize));
+    }
+
+    StagingBuffer::StagingBuffer(RenderContext& renderContext, vk::DeviceSize bufferSize)
+        : Buffer(renderContext, bufferSize, vk::BufferUsageFlagBits::eTransferSrc)
+    {
+    }
+
+    StagingBuffer::~StagingBuffer()
+    {
+    }
+
+    void StagingBuffer::Init()
+    {
+        vk::BufferCreateInfo stagingBufferInfo;
+        stagingBufferInfo.size = m_BufferSize;
+        stagingBufferInfo.usage = m_BufferUsage;
+        stagingBufferInfo.sharingMode = vk::SharingMode::eExclusive;
+
+        VK_CHECK(m_RenderContext.r_Device.createBuffer(&stagingBufferInfo, nullptr, &m_Buffer));
+
+        vk::MemoryRequirements stagingMemRequirements;
+        m_RenderContext.r_Device.getBufferMemoryRequirements(m_Buffer, &stagingMemRequirements);
+
+        auto hostVisible = vk::MemoryPropertyFlagBits::eHostVisible;
+        auto coherent = vk::MemoryPropertyFlagBits::eHostCoherent;
+        auto mask = static_cast<vk::MemoryPropertyFlagBits> (
+            static_cast<std::underlying_type_t<vk::MemoryPropertyFlagBits>>(hostVisible) |
+            static_cast<std::underlying_type_t<vk::MemoryPropertyFlagBits>>(coherent)
+            );
+
+        vk::MemoryAllocateInfo allocInfo{};
+        allocInfo.allocationSize = stagingMemRequirements.size;
+        allocInfo.memoryTypeIndex = FindMemoryTypeIndex(stagingMemRequirements.memoryTypeBits, m_RenderContext.r_GPU.getMemoryProperties(), mask);
+
+        VK_CHECK(m_RenderContext.r_Device.allocateMemory(&allocInfo, nullptr, &m_DeviceMemory));
+
+        m_RenderContext.r_Device.bindBufferMemory(m_Buffer, m_DeviceMemory, 0);
+
+        VK_CHECK(m_RenderContext.r_Device.mapMemory(m_DeviceMemory, 0, m_BufferSize, {}, &m_Data));
+    }
+
+    void StagingBuffer::UpdateData(const void* srcData, vk::CommandBuffer commandBuffer)
+    {
+        memcpy(m_Data, srcData, static_cast<size_t>(m_BufferSize));
+        m_RenderContext.r_Device.unmapMemory(m_DeviceMemory);
+    }
+
+    MeshDataBuffer::MeshDataBuffer(RenderContext& renderContext, vk::DeviceSize bufferSize, vk::BufferUsageFlags usage)
+        : Buffer(renderContext, bufferSize, usage)
+    {
+        m_StagingBuffer = Buffer::CreateBuffer<StagingBuffer>(m_RenderContext, m_BufferSize);
+    }
+
+    MeshDataBuffer::~MeshDataBuffer()
+    {
+        m_StagingBuffer.reset();
+    }
+
+    void MeshDataBuffer::Init()
+    {
+        CreateBufferInDevice(vk::MemoryPropertyFlagBits::eDeviceLocal);
+    }
+
+    void MeshDataBuffer::UpdateData(const void* srcData, vk::CommandBuffer commandBuffer)
+    {
+        m_StagingBuffer->UpdateData(srcData, commandBuffer);
+
+        vk::BufferCopy copyRegion{};
+        copyRegion.srcOffset = 0;  // Optional
+        copyRegion.dstOffset = 0;  // Optional
+        copyRegion.size = m_BufferSize;
+        commandBuffer.copyBuffer(m_StagingBuffer->GetDeviceBuffer(), m_Buffer, 1, &copyRegion);
     }
 }

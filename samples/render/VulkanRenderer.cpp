@@ -585,7 +585,7 @@ namespace prm
 
                 CameraTransformUniformData uniformData{ camera.GetViewMatrix(), camera.GetProjectionMatrix() };
 
-                m_PerFrameUniformBuffers[index]->UpdateDeviceData(&uniformData, commandBufferHandle);
+                m_PerFrameUniformBuffers[index]->UpdateData(&uniformData, commandBufferHandle);
             }
 
             commandBufferHandle.endRenderPass();

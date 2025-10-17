@@ -66,10 +66,10 @@ namespace prm {
         assert(m_VertexCount >= 3 && "Vertex count must be at least 3");
         vk::DeviceSize bufferSize = sizeof(vertices[0]) * m_VertexCount;
 
-        m_VertexBuffer = Buffer::CreateBuffer<Buffer>(m_RenderContext, bufferSize, vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst);
+        m_VertexBuffer = Buffer::CreateBuffer<MeshDataBuffer>(m_RenderContext, bufferSize, vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst);
 
         auto commandBuffer = m_CommandPool.BeginOneTimeSubmitCommand();
-        m_VertexBuffer->UpdateDeviceData(static_cast<const void*>(vertices.data()), commandBuffer);
+        m_VertexBuffer->UpdateData(static_cast<const void*>(vertices.data()), commandBuffer);
         m_CommandPool.EndOneTimeSubmitCommand(commandBuffer);
     }
 
@@ -84,10 +84,10 @@ namespace prm {
 
         const vk::DeviceSize bufferSize = sizeof(indices[0]) * m_IndexCount;
 
-        m_IndexBuffer = Buffer::CreateBuffer<Buffer>(m_RenderContext, bufferSize, vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst);
+        m_IndexBuffer = Buffer::CreateBuffer<MeshDataBuffer>(m_RenderContext, bufferSize, vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst);
 
         auto commandBuffer = m_CommandPool.BeginOneTimeSubmitCommand();
-        m_IndexBuffer->UpdateDeviceData(static_cast<const void*>(indices.data()), commandBuffer);
+        m_IndexBuffer->UpdateData(static_cast<const void*>(indices.data()), commandBuffer);
         m_CommandPool.EndOneTimeSubmitCommand(commandBuffer);
     }
 
