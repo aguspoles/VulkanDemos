@@ -81,6 +81,7 @@ namespace prm
         std::vector<char> code;
     };
 
+    //Remember std140 demands data to be aligned to 16 bytes
     struct SimplePushConstantData
     {
         glm::mat4 modelMatrix{ 1.0f };

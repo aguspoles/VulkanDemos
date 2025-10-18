@@ -17,13 +17,15 @@ namespace prm {
         // https://en.wikipedia.org/wiki/Euler_angles#Rotation_matrix
         glm::mat4 mat4() const
         {
-            glm::mat4 modelToWorldTransformMatrix;
-            modelToWorldTransformMatrix = glm::scale(modelToWorldTransformMatrix, scale);
-            modelToWorldTransformMatrix = glm::rotate(modelToWorldTransformMatrix, rotation.x, { 1,0,0 });
-            modelToWorldTransformMatrix = glm::rotate(modelToWorldTransformMatrix, rotation.y, { 0,1,0 });
-            modelToWorldTransformMatrix = glm::rotate(modelToWorldTransformMatrix, rotation.z, { 0,0,1 });
-            modelToWorldTransformMatrix = glm::translate(modelToWorldTransformMatrix, translation);
-            return modelToWorldTransformMatrix;
+            glm::mat4 translateMatrix(1.0);
+            glm::mat4 rotateMatrix(1.0);
+            glm::mat4 scaleMatrix(1.0);
+            translateMatrix = glm::translate(translateMatrix, translation);
+            rotateMatrix = glm::rotate(rotateMatrix, rotation.x, { 1,0,0 });
+            rotateMatrix = glm::rotate(rotateMatrix, rotation.y, { 0,1,0 });
+            rotateMatrix = glm::rotate(rotateMatrix, rotation.z, { 0,0,1 });
+            scaleMatrix = glm::scale(scaleMatrix, scale);
+            return translateMatrix*rotateMatrix*scaleMatrix;
             /*const float c3 = glm::cos(rotation.z);
             const float s3 = glm::sin(rotation.z);
             const float c2 = glm::cos(rotation.x);

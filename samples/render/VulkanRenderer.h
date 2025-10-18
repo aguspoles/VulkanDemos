@@ -13,6 +13,7 @@ namespace prm
     class IRenderableObject;
     class Camera;
     class Buffer;
+    class Texture;
 
     class VulkanRenderer
     {
@@ -29,11 +30,13 @@ namespace prm
         VulkanRenderer& operator=(VulkanRenderer&&) = delete;
 
         void Init();
+        void PrepareResources();
         void Draw(const std::vector<IRenderableObject*>& renderableObjects, const Camera& camera);
         void RecreateSwapchain();
 
         void SetVertexShader(const std::string& filePath) { m_VertexShaderPath = filePath; }
         void SetFragmentShader(const std::string& filePath) { m_FragmentShaderPath = filePath; }
+        void AddTexture(const std::shared_ptr<Texture>& texture);
 
         const RenderContext& GetRenderContext() const { return m_RenderContext; }
         RenderContext& GetRenderContext() { return m_RenderContext; }
@@ -65,6 +68,7 @@ namespace prm
         std::string m_FragmentShaderPath;
 
         std::vector<std::shared_ptr<Buffer>> m_PerFrameUniformBuffers;
+        std::vector<std::shared_ptr<Texture>> m_Textures;
 
 #if defined(VKB_DEBUG)
         DebugInfo m_DebugInfo;

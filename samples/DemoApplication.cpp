@@ -33,29 +33,32 @@ namespace prm
         Application::Prepare(_platform);
 
         m_Renderer = std::make_unique<VulkanRenderer>(*m_Platform);
+        m_Renderer->Init();
 
         m_Renderer->SetVertexShader("output/diffuse_vert.spv");
         m_Renderer->SetFragmentShader("output/diffuse_frag.spv");
-
-        m_Renderer->Init();
-
-        RenderContext& context = m_Renderer->GetRenderContext();
-
-        m_Mesh = Mesh::CreateModelFromFile(context, m_Renderer->GetCommandPool(), "assets/meshes/teapot.obj");
 
         void* imageData = nullptr;
         Texture::Extent imageExtent;
 
         ImageLoader::LoadImageFromPath("assets/textures/statue.jpg", imageData, imageExtent);
-        m_Texture = std::make_shared<Texture>(m_Renderer->GetRenderContext(), imageData, imageExtent);
+        m_Texture = std::make_shared<Texture>(m_Renderer->GetRenderContext(), m_Renderer->GetCommandPool(), imageData, imageExtent);
         ImageLoader::UnloadImage(imageData);
+
+        m_Renderer->AddTexture(m_Texture);
+
+        m_Renderer->PrepareResources();
+
+        RenderContext& context = m_Renderer->GetRenderContext();
+
+        m_Mesh = Mesh::CreateModelFromFile(context, m_Renderer->GetCommandPool(), "assets/meshes/textured_cube.obj");
 
         auto go = GameObject::CreateGameObject();
         m_GameObjects.push_back(std::move(go));
         m_GameObjects[0].model = m_Mesh;
-        m_GameObjects[0].transform.translation = { 0.f, 1.5f, 10.f };
-        m_GameObjects[0].transform.scale = { 0.1f, 0.1f, 0.1f };
-        m_GameObjects[0].transform.rotation = { 0, glm::radians(0.f), 0 };
+        m_GameObjects[0].transform.translation = { 0.f, 0.f, 5.f };
+        //m_GameObjects[0].transform.scale = { 0.1f, 0.1f, 0.1f };
+        m_GameObjects[0].transform.rotation = { 0, 0, 0 };
 
         m_RenderableObjects.push_back(static_cast<IRenderableObject*>(&m_GameObjects[0]));
 
@@ -147,6 +150,8 @@ namespace prm
         {
             m_Camera.Move(m_CurrentCameraMovement, m_DeltaTime);
         }
+
+        m_GameObjects[0].transform.rotation = m_GameObjects[0].transform.rotation + glm::vec3{ 0,1,0 } * glm::radians(10.f) * delta_time;
 
         m_Renderer->Draw(m_RenderableObjects, m_Camera);
 

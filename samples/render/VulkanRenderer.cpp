@@ -10,6 +10,7 @@
 #include "render/Mesh.h"
 #include "render/Buffer.h"
 #include "render/RenderableObject.h"
+#include "render/Texture.h"
 #include "scene/Camera.h"
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
@@ -127,6 +128,7 @@ namespace prm
         {
             m_PerFrameUniformBuffers[i].reset();
         }
+        m_Textures.clear();
 
         m_Swapchain.reset();
 
@@ -172,6 +174,11 @@ namespace prm
 
         VULKAN_HPP_DEFAULT_DISPATCHER.init(m_RenderContext.r_Device);
 
+        m_GraphicsCommandPool = std::make_unique<CommandPool>(m_RenderContext);
+    }
+
+    void VulkanRenderer::PrepareResources()
+    {
         const auto vertexShaderCode = read_shader_file(m_VertexShaderPath);
         const auto fragmentShaderCode = read_shader_file(m_FragmentShaderPath);
         ShaderInfo vertInfo;
@@ -193,8 +200,6 @@ namespace prm
         CreateDescriptorSets();
 
         CreatePipelineLayout();
-
-        m_GraphicsCommandPool = std::make_unique<CommandPool>(m_RenderContext);
 
         m_GraphicsPipeline = std::make_unique<GraphicsPipeline>(m_RenderContext.r_Device, m_PipeCache, m_PipelineState, m_ShaderInfos);
     }
@@ -456,7 +461,13 @@ namespace prm
         uniformBinding.descriptorCount = 1;
         uniformBinding.stageFlags = vk::ShaderStageFlagBits::eVertex;
 
-        std::vector<vk::DescriptorSetLayoutBinding> bindings{ uniformBinding };
+        vk::DescriptorSetLayoutBinding textureSamplerBinding;
+        textureSamplerBinding.binding = 1;
+        textureSamplerBinding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+        textureSamplerBinding.descriptorCount = 1;
+        textureSamplerBinding.stageFlags = vk::ShaderStageFlagBits::eFragment;
+
+        std::vector<vk::DescriptorSetLayoutBinding> bindings{ uniformBinding, textureSamplerBinding };
 
         vk::DescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo;
         descriptorSetLayoutCreateInfo.bindingCount = static_cast<uint32_t>(bindings.size());
@@ -467,11 +478,15 @@ namespace prm
 
         m_DescriptoSetLayouts.resize(m_Swapchain->GetMaxFramesInFlight(), descriptorSetLayout);
 
-        vk::DescriptorPoolSize descriptorPoolSize;
-        descriptorPoolSize.type = vk::DescriptorType::eUniformBuffer;
-        descriptorPoolSize.descriptorCount = m_Swapchain->GetMaxFramesInFlight();
+        vk::DescriptorPoolSize descriptorPoolSizeUniform;
+        descriptorPoolSizeUniform.type = vk::DescriptorType::eUniformBuffer;
+        descriptorPoolSizeUniform.descriptorCount = m_Swapchain->GetMaxFramesInFlight();
 
-        std::vector<vk::DescriptorPoolSize> descriptorPoolTypes{ descriptorPoolSize };
+        vk::DescriptorPoolSize descriptorPoolSizeSampler;
+        descriptorPoolSizeSampler.type = vk::DescriptorType::eCombinedImageSampler;
+        descriptorPoolSizeSampler.descriptorCount = m_Swapchain->GetMaxFramesInFlight();
+
+        std::vector<vk::DescriptorPoolSize> descriptorPoolTypes{ descriptorPoolSizeUniform, descriptorPoolSizeSampler };
 
         vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo;
         descriptorPoolCreateInfo.poolSizeCount = static_cast<uint32_t>(descriptorPoolTypes.size());
@@ -496,15 +511,30 @@ namespace prm
             bufferInfo.offset = 0;
             bufferInfo.range = VK_WHOLE_SIZE;
 
-            vk::WriteDescriptorSet writeDescriptorSet;
-            writeDescriptorSet.dstSet = m_DescriptorSets[i];
-            writeDescriptorSet.dstBinding = 0;
-            writeDescriptorSet.dstArrayElement = 0;
-            writeDescriptorSet.descriptorCount = 1;
-            writeDescriptorSet.descriptorType = vk::DescriptorType::eUniformBuffer;
-            writeDescriptorSet.pBufferInfo = &bufferInfo;
+            vk::WriteDescriptorSet writeDescriptorSetUniform;
+            writeDescriptorSetUniform.dstSet = m_DescriptorSets[i];
+            writeDescriptorSetUniform.dstBinding = 0;
+            writeDescriptorSetUniform.dstArrayElement = 0;
+            writeDescriptorSetUniform.descriptorCount = 1;
+            writeDescriptorSetUniform.descriptorType = vk::DescriptorType::eUniformBuffer;
+            writeDescriptorSetUniform.pBufferInfo = &bufferInfo;
 
-            writeSets.emplace_back(writeDescriptorSet);
+            writeSets.emplace_back(writeDescriptorSetUniform);
+
+            for (auto& texture : m_Textures)
+            {
+                vk::DescriptorImageInfo imageInfo(texture->GetSampler(), texture->GetImageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
+
+                vk::WriteDescriptorSet writeDescriptorSetSampler;
+                writeDescriptorSetSampler.dstSet = m_DescriptorSets[i];
+                writeDescriptorSetSampler.dstBinding = 1;
+                writeDescriptorSetSampler.dstArrayElement = 0;
+                writeDescriptorSetSampler.descriptorCount = 1;
+                writeDescriptorSetSampler.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+                writeDescriptorSetSampler.pImageInfo = &imageInfo;
+
+                writeSets.emplace_back(writeDescriptorSetSampler);
+            }
         }
 
         m_RenderContext.r_Device.updateDescriptorSets(writeSets, {});
@@ -634,12 +664,14 @@ namespace prm
             queueInfos.emplace_back(queueInfo);
         }
 
+        vk::PhysicalDeviceFeatures features{};
+        features.samplerAnisotropy = true;
+
         vk::DeviceCreateInfo deviceInfo{};
         deviceInfo.pQueueCreateInfos = queueInfos.data();
         deviceInfo.queueCreateInfoCount = static_cast<uint32_t>(queueInfos.size());
         deviceInfo.enabledExtensionCount = static_cast<uint32_t>(m_EnabledDeviceExtensions.size());
         deviceInfo.ppEnabledExtensionNames = m_EnabledDeviceExtensions.data();
-        const vk::PhysicalDeviceFeatures features{};
         deviceInfo.pEnabledFeatures = &features;
 
         VK_CHECK(m_RenderContext.r_GPU.createDevice(&deviceInfo, nullptr, &m_RenderContext.r_Device));
@@ -705,6 +737,11 @@ namespace prm
 
         //Pipeline depends on swapchain extent
         m_GraphicsPipeline = std::make_unique<GraphicsPipeline>(m_RenderContext.r_Device, m_PipeCache, m_PipelineState, m_ShaderInfos);
+    }
+
+    void VulkanRenderer::AddTexture(const std::shared_ptr<Texture>& texture)
+    {
+        m_Textures.emplace_back(texture);
     }
 
     float VulkanRenderer::GetAspectRatio() const
