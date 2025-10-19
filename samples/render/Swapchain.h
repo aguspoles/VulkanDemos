@@ -1,8 +1,21 @@
 #pragma once
-#include "render/Utilities.h"
+#include "render/RenderContext.h"
 
 namespace prm
 {
+    struct SwapchainDetails
+    {
+        vk::SurfaceCapabilitiesKHR capabilities;  //surface properties
+        std::vector<vk::SurfaceFormatKHR> formats; //surface image formats
+        std::vector<vk::PresentModeKHR> presentModes; //How image should be presented on screen: FIFO, MAILBOX, etc
+    };
+
+    struct SwapchainImage
+    {
+        vk::Image image;
+        vk::ImageView view;
+    };
+
     class Swapchain
     {
     public:

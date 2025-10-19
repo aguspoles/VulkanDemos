@@ -6,6 +6,13 @@ namespace prm {
     class Buffer;
     struct RenderContext;
 
+    //Remember std140 demands data to be aligned to 16 bytes
+    struct SimplePushConstantData
+    {
+        glm::mat4 modelMatrix{ 1.0f };
+        //alignas(16) glm::vec3 color{};
+    };
+
     class Mesh {
     public:
         struct Vertex

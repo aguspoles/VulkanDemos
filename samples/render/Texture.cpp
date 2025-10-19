@@ -2,7 +2,6 @@
 #include "core/Error.h"
 #include "render/Texture.h"
 #include "render/Buffer.h"
-#include "render/Utilities.h"
 #include "render/CommandPool.h"
 
 namespace prm {
@@ -27,27 +26,27 @@ namespace prm {
 			vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
 			vk::SharingMode::eExclusive, 0);
 
-		m_TextureImage = renderContext.r_Device.createImage(imageInfo);
+		m_TextureImage = renderContext.Device.createImage(imageInfo);
 
 		vk::MemoryRequirements memRequirements;
-		renderContext.r_Device.getImageMemoryRequirements(m_TextureImage, &memRequirements);
+		renderContext.Device.getImageMemoryRequirements(m_TextureImage, &memRequirements);
 
 		vk::MemoryAllocateInfo allocInfo;
 		allocInfo.allocationSize = memRequirements.size;
-		allocInfo.memoryTypeIndex = FindMemoryTypeIndex(memRequirements.memoryTypeBits, renderContext.r_GPU.getMemoryProperties(), vk::MemoryPropertyFlagBits::eDeviceLocal);
+		allocInfo.memoryTypeIndex = RenderContext::FindMemoryTypeIndex(memRequirements.memoryTypeBits, renderContext.GPU.getMemoryProperties(), vk::MemoryPropertyFlagBits::eDeviceLocal);
 
-		VK_CHECK(renderContext.r_Device.allocateMemory(&allocInfo, nullptr, &m_TextureImageMemory));
-		renderContext.r_Device.bindImageMemory(m_TextureImage, m_TextureImageMemory, 0);
+		VK_CHECK(renderContext.Device.allocateMemory(&allocInfo, nullptr, &m_TextureImageMemory));
+		renderContext.Device.bindImageMemory(m_TextureImage, m_TextureImageMemory, 0);
 
 		TransitionImageLayout(vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
 		CopyBufferToImage(buffer->GetDeviceBuffer(), imageSize);
 		TransitionImageLayout(vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
 
 		vk::ImageViewCreateInfo viewInfo({}, m_TextureImage, vk::ImageViewType::e2D, vk::Format::eR8G8B8A8Srgb, {}, { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
-		m_ImageView = m_RenderContext.r_Device.createImageView(viewInfo);
+		m_ImageView = m_RenderContext.Device.createImageView(viewInfo);
 
 		//Save properties somewhere
-		vk::PhysicalDeviceProperties properties = m_RenderContext.r_GPU.getProperties();
+		vk::PhysicalDeviceProperties properties = m_RenderContext.GPU.getProperties();
 		vk::SamplerCreateInfo samplerInfo({}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear, vk::SamplerAddressMode::eRepeat,
 			vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, 0, 1,
 			properties.limits.maxSamplerAnisotropy, false, vk::CompareOp::eAlways);
@@ -60,15 +59,15 @@ namespace prm {
 		samplerInfo.minLod = 0.0f;
 		samplerInfo.maxLod = 0.0f;
 
-		m_ImageSampler = m_RenderContext.r_Device.createSampler(samplerInfo);
+		m_ImageSampler = m_RenderContext.Device.createSampler(samplerInfo);
 	}
 
 	Texture::~Texture()
 	{
-		m_RenderContext.r_Device.destroySampler(m_ImageSampler);
-		m_RenderContext.r_Device.destroyImageView(m_ImageView);
-		m_RenderContext.r_Device.destroyImage(m_TextureImage);
-		m_RenderContext.r_Device.freeMemory(m_TextureImageMemory);
+		m_RenderContext.Device.destroySampler(m_ImageSampler);
+		m_RenderContext.Device.destroyImageView(m_ImageView);
+		m_RenderContext.Device.destroyImage(m_TextureImage);
+		m_RenderContext.Device.freeMemory(m_TextureImageMemory);
 	}
 
 	void Texture::TransitionImageLayout(vk::ImageLayout oldLayout, vk::ImageLayout newLayout)

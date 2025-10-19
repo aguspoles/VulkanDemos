@@ -1,6 +1,5 @@
 #pragma once
 #include "platform/Application.h"
-#include "render/VulkanRenderer.h"
 #include "scene/GameObject.h"
 #include "scene/Camera.h"
 
@@ -10,6 +9,7 @@ namespace prm
     class InputEvent;
     class Mesh;
     class Texture;
+    class VulkanRenderer;
 
     class DemoApplication : public Application
     {
@@ -21,6 +21,8 @@ namespace prm
         bool Prepare(Platform& platform) override;
 
         void Update(float delta_time) override;
+
+        void Finish() override;
 
         bool Resize(const uint32_t width, const uint32_t height) override;
 

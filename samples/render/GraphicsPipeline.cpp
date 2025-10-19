@@ -1,5 +1,5 @@
 #include "pch.h"
-#include "GraphicsPipeline.h"
+#include "render/GraphicsPipeline.h"
 
 #include "core/Error.h"
 

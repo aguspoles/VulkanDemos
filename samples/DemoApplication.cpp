@@ -6,6 +6,8 @@
 #include "render/Mesh.h"
 #include "render/Texture.h"
 #include "render/ImageLoader.h"
+#include "render/RenderContext.h"
+#include "render/VulkanRenderer.h"
 
 namespace 
 {
@@ -21,11 +23,6 @@ namespace prm
 
     DemoApplication::~DemoApplication()
     {
-        m_Renderer->GetRenderContext().r_Device.waitIdle();
-        m_Texture.reset();
-        m_GameObjects.clear();
-        m_Mesh.reset();
-        m_Renderer.reset();
     }
 
     bool DemoApplication::Prepare(Platform& _platform)
@@ -34,6 +31,7 @@ namespace prm
 
         m_Renderer = std::make_unique<VulkanRenderer>(*m_Platform);
         m_Renderer->Init();
+        RenderContext& context = m_Renderer->GetRenderContext();
 
         m_Renderer->SetVertexShader("output/diffuse_vert.spv");
         m_Renderer->SetFragmentShader("output/diffuse_frag.spv");
@@ -42,14 +40,12 @@ namespace prm
         Texture::Extent imageExtent;
 
         ImageLoader::LoadImageFromPath("assets/textures/statue.jpg", imageData, imageExtent);
-        m_Texture = std::make_shared<Texture>(m_Renderer->GetRenderContext(), m_Renderer->GetCommandPool(), imageData, imageExtent);
+        m_Texture = std::make_shared<Texture>(context, m_Renderer->GetCommandPool(), imageData, imageExtent);
         ImageLoader::UnloadImage(imageData);
 
         m_Renderer->AddTexture(m_Texture);
 
         m_Renderer->PrepareResources();
-
-        RenderContext& context = m_Renderer->GetRenderContext();
 
         m_Mesh = Mesh::CreateModelFromFile(context, m_Renderer->GetCommandPool(), "assets/meshes/textured_cube.obj");
 
@@ -66,6 +62,16 @@ namespace prm
         m_LastMouseY = (float)(m_Platform->GetWindow().GetExtent().height) / 2;
 
         return true;
+    }
+
+    void DemoApplication::Finish()
+    {
+        m_Renderer->CleanupResources();
+        m_Texture.reset();
+        m_GameObjects.clear();
+        m_Mesh.reset();
+        m_Renderer->Finish();
+        m_Renderer.reset();
     }
 
     bool DemoApplication::Resize(const uint32_t width, const uint32_t height)

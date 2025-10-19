@@ -1,7 +1,5 @@
 #include "pch.h"
 #include "scene/GameObject.h"
-#include "render/Utilities.h"
-#include "render/Buffer.h"
 #include "scene/Camera.h"
 
 namespace prm {

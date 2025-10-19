@@ -1,7 +1,7 @@
 #pragma once
 #include "platform/Platform.h"
-#include "render/Utilities.h"
 #include "render/PipelineState.h"
+#include "render/GraphicsPipeline.h"
 #include "core/Error.h"
 
 namespace prm
@@ -14,6 +14,7 @@ namespace prm
     class Camera;
     class Buffer;
     class Texture;
+    struct RenderContext;
 
     class VulkanRenderer
     {
@@ -30,7 +31,9 @@ namespace prm
         VulkanRenderer& operator=(VulkanRenderer&&) = delete;
 
         void Init();
+        void Finish();
         void PrepareResources();
+        void CleanupResources();
         void Draw(const std::vector<IRenderableObject*>& renderableObjects, const Camera& camera);
         void RecreateSwapchain();
 
@@ -38,27 +41,24 @@ namespace prm
         void SetFragmentShader(const std::string& filePath) { m_FragmentShaderPath = filePath; }
         void AddTexture(const std::shared_ptr<Texture>& texture);
 
-        const RenderContext& GetRenderContext() const { return m_RenderContext; }
-        RenderContext& GetRenderContext() { return m_RenderContext; }
+        const RenderContext& GetRenderContext() const;
+        RenderContext& GetRenderContext();
         CommandPool& GetCommandPool() { return *m_GraphicsCommandPool; }
 
         float GetAspectRatio() const;
 
     private:
         Platform& m_Platform;
-        RenderContext m_RenderContext;
+        std::unique_ptr<RenderContext> m_RenderContext;
 
-        vk::PipelineLayout m_PipeLayout;
-        vk::PipelineCache m_PipeCache;
+        vk::PipelineLayout m_PipeLayout{};
+        vk::PipelineCache m_PipeCache{};
         PipelineState m_PipelineState;
         std::vector<ShaderInfo> m_ShaderInfos;
 
-        vk::DescriptorPool m_DescriptorPool;
+        vk::DescriptorPool m_DescriptorPool{};
         std::vector<vk::DescriptorSet> m_DescriptorSets;
         std::vector<vk::DescriptorSetLayout> m_DescriptoSetLayouts;
-        
-        std::vector<const char*> m_EnabledInstanceExtensions;
-        std::vector<const char*> m_EnabledDeviceExtensions;
 
         std::unique_ptr<Swapchain> m_Swapchain{nullptr};
         std::unique_ptr<GraphicsPipeline> m_GraphicsPipeline{nullptr};
@@ -69,20 +69,6 @@ namespace prm
 
         std::vector<std::shared_ptr<Buffer>> m_PerFrameUniformBuffers;
         std::vector<std::shared_ptr<Texture>> m_Textures;
-
-#if defined(VKB_DEBUG)
-        DebugInfo m_DebugInfo;
-#endif
-
-        void CreateInstance(const std::vector<const char*>& requiredInstanceExtensions);
-        void CheckInstanceExtensionsSupport(const std::vector<const char*>& required_extensions);
-
-        void FindPhysicalDevice();
-
-        void CreateLogicalDevice(const std::vector<const char*>& requiredDeviceExtensions);
-        void CheckDeviceExtensionsSupport(const std::vector<const char*>& required_extensions);
-
-        QueueFamilyIndices GetQueueFamilyIndices(const vk::PhysicalDevice& gpu) const;
 
         void CreateUniformBuffers();
 

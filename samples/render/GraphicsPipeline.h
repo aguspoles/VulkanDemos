@@ -1,9 +1,15 @@
 #pragma once
 #include "render/PipelineState.h"
-#include "render/Utilities.h"
 
 namespace prm
 {
+    struct ShaderInfo
+    {
+        vk::ShaderStageFlagBits stage{ vk::ShaderStageFlagBits::eVertex };
+        std::string entryPoint;
+        std::vector<char> code;
+    };
+
     class Pipeline
     {
     public:

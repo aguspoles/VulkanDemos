@@ -1,5 +1,4 @@
 #include "pch.h"
-#include "render/Utilities.h"
 #include "render/CommandPool.h"
 #include "render/CommandBuffer.h"
 #include "core/Error.h"
@@ -10,16 +9,16 @@ namespace prm
         : m_RenderContext(context)
     {
         vk::CommandPoolCreateInfo info;
-        info.queueFamilyIndex = m_RenderContext.r_QueueFamilyIndices.graphicsFamily;
+        info.queueFamilyIndex = m_RenderContext.QueueIndices.graphicsFamily;
         info.flags = { vk::CommandPoolCreateFlagBits::eResetCommandBuffer };
 
-        VK_CHECK(m_RenderContext.r_Device.createCommandPool(&info, nullptr, &m_Handle));
+        VK_CHECK(m_RenderContext.Device.createCommandPool(&info, nullptr, &m_Handle));
     }
 
     CommandPool::~CommandPool()
     {
         m_CommandBuffers.clear();
-        m_RenderContext.r_Device.destroyCommandPool(m_Handle);
+        m_RenderContext.Device.destroyCommandPool(m_Handle);
     }
 
     CommandBuffer& CommandPool::RequestCommandBuffer(uint32_t index)
@@ -42,7 +41,7 @@ namespace prm
         allocInfo.commandBufferCount = 1;
 
         vk::CommandBuffer commandBuffer;
-        VK_CHECK(m_RenderContext.r_Device.allocateCommandBuffers(&allocInfo, &commandBuffer));
+        VK_CHECK(m_RenderContext.Device.allocateCommandBuffers(&allocInfo, &commandBuffer));
 
         vk::CommandBufferBeginInfo beginInfo{};
         beginInfo.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit;
@@ -59,9 +58,9 @@ namespace prm
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &command;
 
-        VK_CHECK(m_RenderContext.r_GraphicsQueue.submit(1, &submitInfo, nullptr));
-        m_RenderContext.r_GraphicsQueue.waitIdle();
+        VK_CHECK(m_RenderContext.GraphicsQueue.submit(1, &submitInfo, nullptr));
+        m_RenderContext.GraphicsQueue.waitIdle();
 
-        m_RenderContext.r_Device.freeCommandBuffers(m_Handle, 1, &command);
+        m_RenderContext.Device.freeCommandBuffers(m_Handle, 1, &command);
     }
 }

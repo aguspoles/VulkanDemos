@@ -1,5 +1,5 @@
 #pragma once
-#include "Utilities.h"
+#include "render/RenderContext.h"
 
 namespace prm
 {
@@ -28,7 +28,7 @@ namespace prm
 
         vk::CommandPool GetHandle() const { return m_Handle; }
 
-        vk::Device GetDevice() const { return m_RenderContext.r_Device; }
+        vk::Device GetDevice() const { return m_RenderContext.Device; }
 
     private:
         vk::CommandPool m_Handle;

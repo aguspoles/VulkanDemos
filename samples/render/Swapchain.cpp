@@ -39,35 +39,35 @@ namespace prm
     {
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
         {
-            m_RenderContext.r_Device.destroySemaphore(m_ImageAvailableSemaphores[i]);
-            m_RenderContext.r_Device.destroySemaphore(m_RenderFinishedSemaphores[i]);
-            m_RenderContext.r_Device.destroyFence(m_InFlightFences[i]);
+            m_RenderContext.Device.destroySemaphore(m_ImageAvailableSemaphores[i]);
+            m_RenderContext.Device.destroySemaphore(m_RenderFinishedSemaphores[i]);
+            m_RenderContext.Device.destroyFence(m_InFlightFences[i]);
         }
 
         for (const auto& buffer : m_FrameBuffers)
         {
-            m_RenderContext.r_Device.destroyFramebuffer(buffer);
+            m_RenderContext.Device.destroyFramebuffer(buffer);
         }
 
-        m_RenderContext.r_Device.destroyRenderPass(m_RenderPass);
+        m_RenderContext.Device.destroyRenderPass(m_RenderPass);
 
         for (const auto& image : m_ColorImages)
         {
-            m_RenderContext.r_Device.destroyImageView(image.view);
+            m_RenderContext.Device.destroyImageView(image.view);
         }
         for (const auto& image : m_DepthImages)
         {
-            m_RenderContext.r_Device.destroyImageView(image.view);
+            m_RenderContext.Device.destroyImageView(image.view);
         }
         if (m_Handle)
         {
-            m_RenderContext.r_Device.destroySwapchainKHR(m_Handle);
+            m_RenderContext.Device.destroySwapchainKHR(m_Handle);
         }
     }
 
     void Swapchain::Init(vk::Extent2D windowExtent)
     {
-        const SwapchainDetails swapchainDetails = GetSwapchainDetails(m_RenderContext.r_GPU);
+        const SwapchainDetails swapchainDetails = GetSwapchainDetails(m_RenderContext.GPU);
 
         const auto selectedFormat = ChooseFormat(swapchainDetails.formats);
         const auto selectedPresentMode = ChoosePresentMode(vk::PresentModeKHR::eMailbox, swapchainDetails.presentModes);
@@ -81,7 +81,7 @@ namespace prm
         }
 
         vk::SwapchainCreateInfoKHR info;
-        info.surface = m_RenderContext.r_Surface;
+        info.surface = m_RenderContext.Surface;
         info.imageFormat = selectedFormat.format;
         info.imageColorSpace = selectedFormat.colorSpace;
         info.presentMode = selectedPresentMode;
@@ -95,10 +95,10 @@ namespace prm
         info.oldSwapchain = m_OldSwapchain == nullptr ? nullptr : m_OldSwapchain->GetHandle();
 
         //If graphics and presentation families are different, then swapchain must let images be shared between families
-        if (m_RenderContext.r_QueueFamilyIndices.graphicsFamily != m_RenderContext.r_QueueFamilyIndices.presentFamily)
+        if (m_RenderContext.QueueIndices.graphicsFamily != m_RenderContext.QueueIndices.presentFamily)
         {
-            const uint32_t familyIndices[] = { static_cast<uint32_t>(m_RenderContext.r_QueueFamilyIndices.graphicsFamily),
-                static_cast<uint32_t>(m_RenderContext.r_QueueFamilyIndices.presentFamily) };
+            const uint32_t familyIndices[] = { static_cast<uint32_t>(m_RenderContext.QueueIndices.graphicsFamily),
+                static_cast<uint32_t>(m_RenderContext.QueueIndices.presentFamily) };
             info.imageSharingMode = vk::SharingMode::eConcurrent;
             info.queueFamilyIndexCount = 2;
             info.pQueueFamilyIndices = familyIndices;
@@ -110,16 +110,16 @@ namespace prm
             info.pQueueFamilyIndices = nullptr;
         }
 
-        VK_CHECK(m_RenderContext.r_Device.createSwapchainKHR(&info, nullptr, &m_Handle));
+        VK_CHECK(m_RenderContext.Device.createSwapchainKHR(&info, nullptr, &m_Handle));
 
         m_SwapchainImageFormat = selectedFormat.format;
         m_SwapchainExtent = extent;
 
         //Create the images
         uint32_t count;
-        VK_CHECK(m_RenderContext.r_Device.getSwapchainImagesKHR(m_Handle, &count, nullptr));
+        VK_CHECK(m_RenderContext.Device.getSwapchainImagesKHR(m_Handle, &count, nullptr));
         std::vector<vk::Image> images(count);
-        VK_CHECK(m_RenderContext.r_Device.getSwapchainImagesKHR(m_Handle, &count, images.data()));
+        VK_CHECK(m_RenderContext.Device.getSwapchainImagesKHR(m_Handle, &count, images.data()));
 
         for (const auto image : images)
         {
@@ -142,10 +142,10 @@ namespace prm
 
     vk::Result Swapchain::AcquireNextImage(uint32_t& image)
     {
-        VK_CHECK(m_RenderContext.r_Device.waitForFences(1, &m_InFlightFences[m_CurrentFrame], VK_TRUE, UINT64_MAX));
+        VK_CHECK(m_RenderContext.Device.waitForFences(1, &m_InFlightFences[m_CurrentFrame], VK_TRUE, UINT64_MAX));
 
         vk::Result res;
-        std::tie(res, image) = m_RenderContext.r_Device.acquireNextImageKHR(m_Handle, 
+        std::tie(res, image) = m_RenderContext.Device.acquireNextImageKHR(m_Handle, 
             UINT64_MAX, m_ImageAvailableSemaphores[m_CurrentFrame]);
 
         return res;
@@ -155,7 +155,7 @@ namespace prm
     {
         if (m_ImagesInFlightFences[imageIndex])
         {
-            VK_CHECK(m_RenderContext.r_Device.waitForFences(1, &m_ImagesInFlightFences[imageIndex], VK_TRUE, UINT64_MAX));
+            VK_CHECK(m_RenderContext.Device.waitForFences(1, &m_ImagesInFlightFences[imageIndex], VK_TRUE, UINT64_MAX));
         }
         m_ImagesInFlightFences[imageIndex] = m_InFlightFences[m_CurrentFrame];
 
@@ -174,8 +174,8 @@ namespace prm
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
 
-        VK_CHECK(m_RenderContext.r_Device.resetFences(1, &m_InFlightFences[m_CurrentFrame]));
-        VK_CHECK(m_RenderContext.r_GraphicsQueue.submit(1, &submitInfo, m_InFlightFences[m_CurrentFrame]));
+        VK_CHECK(m_RenderContext.Device.resetFences(1, &m_InFlightFences[m_CurrentFrame]));
+        VK_CHECK(m_RenderContext.GraphicsQueue.submit(1, &submitInfo, m_InFlightFences[m_CurrentFrame]));
 
         vk::PresentInfoKHR presentInfo;
         presentInfo.waitSemaphoreCount = 1;
@@ -187,7 +187,7 @@ namespace prm
 
         presentInfo.pImageIndices = &imageIndex;
 
-        auto result = m_RenderContext.r_PresentQueue.presentKHR(&presentInfo);
+        auto result = m_RenderContext.PresentQueue.presentKHR(&presentInfo);
 
         m_CurrentFrame = (m_CurrentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 
@@ -248,7 +248,7 @@ namespace prm
         renderPassInfo.dependencyCount = 1;
         renderPassInfo.pDependencies = &dependency;
 
-        VK_CHECK(m_RenderContext.r_Device.createRenderPass(&renderPassInfo, nullptr, &m_RenderPass));
+        VK_CHECK(m_RenderContext.Device.createRenderPass(&renderPassInfo, nullptr, &m_RenderPass));
     }
 
     void Swapchain::CreateFrameBuffers()
@@ -270,7 +270,7 @@ namespace prm
             info.height = m_SwapchainExtent.height;
             info.layers = 1;
 
-            VK_CHECK(m_RenderContext.r_Device.createFramebuffer(&info, nullptr, &m_FrameBuffers[i]));
+            VK_CHECK(m_RenderContext.Device.createFramebuffer(&info, nullptr, &m_FrameBuffers[i]));
         }
     }
 
@@ -278,17 +278,17 @@ namespace prm
     {
         SwapchainDetails res;
 
-        VK_CHECK(m_RenderContext.r_GPU.getSurfaceCapabilitiesKHR(m_RenderContext.r_Surface, &res.capabilities));
+        VK_CHECK(m_RenderContext.GPU.getSurfaceCapabilitiesKHR(m_RenderContext.Surface, &res.capabilities));
 
         uint32_t count = 0;
-        VK_CHECK(m_RenderContext.r_GPU.getSurfaceFormatsKHR(m_RenderContext.r_Surface, &count, nullptr));
+        VK_CHECK(m_RenderContext.GPU.getSurfaceFormatsKHR(m_RenderContext.Surface, &count, nullptr));
         res.formats.resize(count);
-        VK_CHECK(m_RenderContext.r_GPU.getSurfaceFormatsKHR(m_RenderContext.r_Surface, &count, res.formats.data()));
+        VK_CHECK(m_RenderContext.GPU.getSurfaceFormatsKHR(m_RenderContext.Surface, &count, res.formats.data()));
 
         count = 0;
-        VK_CHECK(m_RenderContext.r_GPU.getSurfacePresentModesKHR(m_RenderContext.r_Surface, &count, nullptr));
+        VK_CHECK(m_RenderContext.GPU.getSurfacePresentModesKHR(m_RenderContext.Surface, &count, nullptr));
         res.presentModes.resize(count);
-        VK_CHECK(m_RenderContext.r_GPU.getSurfacePresentModesKHR(m_RenderContext.r_Surface, &count, res.presentModes.data()));
+        VK_CHECK(m_RenderContext.GPU.getSurfacePresentModesKHR(m_RenderContext.Surface, &count, res.presentModes.data()));
 
         if (res.presentModes.empty() || res.formats.empty())
         {
@@ -398,7 +398,7 @@ namespace prm
         info.subresourceRange.layerCount = 1;
 
         vk::ImageView view;
-        VK_CHECK(m_RenderContext.r_Device.createImageView(&info, nullptr, &view));
+        VK_CHECK(m_RenderContext.Device.createImageView(&info, nullptr, &view));
 
         return view;
     }
@@ -416,9 +416,9 @@ namespace prm
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
         {
-            VK_CHECK(m_RenderContext.r_Device.createSemaphore(&semaphoreInfo, nullptr, &m_ImageAvailableSemaphores[i]));
-            VK_CHECK(m_RenderContext.r_Device.createSemaphore(&semaphoreInfo, nullptr, &m_RenderFinishedSemaphores[i]));
-            VK_CHECK(m_RenderContext.r_Device.createFence(&fenceInfo, nullptr, &m_InFlightFences[i]));
+            VK_CHECK(m_RenderContext.Device.createSemaphore(&semaphoreInfo, nullptr, &m_ImageAvailableSemaphores[i]));
+            VK_CHECK(m_RenderContext.Device.createSemaphore(&semaphoreInfo, nullptr, &m_RenderFinishedSemaphores[i]));
+            VK_CHECK(m_RenderContext.Device.createFence(&fenceInfo, nullptr, &m_InFlightFences[i]));
         }
     }
 
@@ -431,7 +431,7 @@ namespace prm
         for (vk::Format format : candidates) 
         {
             vk::FormatProperties props;
-            m_RenderContext.r_GPU.getFormatProperties(format, &props);
+            m_RenderContext.GPU.getFormatProperties(format, &props);
 
             if (tiling == vk::ImageTiling::eOptimal && (props.linearTilingFeatures & features) == features) 
             {
@@ -473,19 +473,19 @@ namespace prm
             imageInfo.samples = vk::SampleCountFlagBits::e1;
             imageInfo.sharingMode = vk::SharingMode::eExclusive;
 
-            VK_CHECK(m_RenderContext.r_Device.createImage(&imageInfo, nullptr, &m_DepthImages[i].image));
+            VK_CHECK(m_RenderContext.Device.createImage(&imageInfo, nullptr, &m_DepthImages[i].image));
 
             vk::MemoryRequirements memRequirements;
-            m_RenderContext.r_Device.getImageMemoryRequirements(m_DepthImages[i].image, &memRequirements);
+            m_RenderContext.Device.getImageMemoryRequirements(m_DepthImages[i].image, &memRequirements);
 
             vk::MemoryAllocateInfo allocInfo{};
             allocInfo.allocationSize = memRequirements.size;
-            allocInfo.memoryTypeIndex = FindMemoryTypeIndex(memRequirements.memoryTypeBits,
-                m_RenderContext.r_GPU.getMemoryProperties(), vk::MemoryPropertyFlagBits::eDeviceLocal);
+            allocInfo.memoryTypeIndex = RenderContext::FindMemoryTypeIndex(memRequirements.memoryTypeBits,
+                m_RenderContext.GPU.getMemoryProperties(), vk::MemoryPropertyFlagBits::eDeviceLocal);
 
-            VK_CHECK(m_RenderContext.r_Device.allocateMemory(&allocInfo, nullptr, &m_DepthImageMemorys[i]));
+            VK_CHECK(m_RenderContext.Device.allocateMemory(&allocInfo, nullptr, &m_DepthImageMemorys[i]));
 
-            m_RenderContext.r_Device.bindImageMemory(m_DepthImages[i].image, m_DepthImageMemorys[i], 0);
+            m_RenderContext.Device.bindImageMemory(m_DepthImages[i].image, m_DepthImageMemorys[i], 0);
 
             vk::ImageViewCreateInfo viewInfo{};
             viewInfo.image = m_DepthImages[i].image;
@@ -497,7 +497,7 @@ namespace prm
             viewInfo.subresourceRange.baseArrayLayer = 0;
             viewInfo.subresourceRange.layerCount = 1;
 
-            VK_CHECK(m_RenderContext.r_Device.createImageView(&viewInfo, nullptr, &m_DepthImages[i].view));
+            VK_CHECK(m_RenderContext.Device.createImageView(&viewInfo, nullptr, &m_DepthImages[i].view));
         }
     }
 
